@@ -32,9 +32,9 @@ import pb.protocols.IRequestReplyProtocol;
  * @see {@link pb.Endpoint}
  * @see {@link pb.protocols.Message}
  * @see {@link pb.protocols.keepalive.KeepAliveRequest}
- * @see {@link pb.protocols.keepalive.KeepaliveRespopnse}
+ * @see {@link pb.protocols.keepalive.KeepAliveReply}
  * @see {@link pb.protocols.Protocol}
- * @see {@link pb.protocols.IRequestReqplyProtocol}
+ * @see {@link pb.protocols.IRequestReplyProtocol}
  * @author aaron
  *
  */
@@ -45,9 +45,22 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 * Name of this protocol. 
 	 */
 	public static final String protocolName="KeepAliveProtocol";
-	
+
 	/**
-	 * Initialise the protocol with an endopint and a manager.
+	 * Default delay
+	 */
+	private static final long delay = 20000;
+
+	/**
+	 * Whether received reply or request.
+	 */
+	private volatile boolean recReply=false;
+	private volatile boolean recRequest=false;
+
+
+
+	/**
+	 * Initialise the protocol with an endpoint and a manager.
 	 * @param endpoint
 	 * @param manager
 	 */
@@ -68,32 +81,56 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void stopProtocol() {
-		
+		endpoint.stopProtocol(this.getProtocolName());
 	}
 	
 	/*
 	 * Interface methods
 	 */
-	
+
 	/**
 	 * 
 	 */
 	public void startAsServer() {
-		
+		endpoint.run();        // Keep reading messages from the socket until interrupted. And response request immediately
+		while (true) {
+			pb.Utils.getInstance().setTimeout(() -> {
+				if (recRequest) {
+					recRequest = false;
+				} else {
+					manager.endpointTimedOut(endpoint, this);
+					stopProtocol();
+					return;
+				}
+			}, delay);            // Every 20 sec, check whether received KeepAliveRequest from Clients.
+		}
 	}
 	
 	/**
 	 * 
 	 */
 	public void checkClientTimeout() {
-		
+
 	}
 	
 	/**
 	 * 
 	 */
 	public void startAsClient() throws EndpointUnavailable {
-		
+		sendRequest(new KeepAliveRequest());
+		endpoint.run();            // Keep reading messages from the socket until interrupted.
+		while (true) {
+			pb.Utils.getInstance().setTimeout(() -> {
+				if (recReply) {
+					sendRequest(new KeepAliveRequest());
+					recReply = false;
+				} else {
+					manager.endpointTimedOut(endpoint, this);
+					stopProtocol();
+					return;
+				}
+			}, delay);            // Every 20 sec, check whether received KeepAliveRequest from Server. And then send request.
+		}
 	}
 
 	/**
@@ -102,7 +139,11 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void sendRequest(Message msg) throws EndpointUnavailable {
-		
+		try{
+			endpoint.send(msg);
+		} catch (EndpointUnavailable endpointUnavailable) {
+			endpointUnavailable.printStackTrace();
+		}
 	}
 
 	/**
@@ -111,7 +152,14 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void receiveReply(Message msg) {
-		
+		if (msg instanceof KeepAliveReply) {
+			if(recReply){
+				// error, received a second reply?
+				manager.protocolViolation(endpoint,this);
+				return;
+			}
+			recReply = true;
+		}
 	}
 
 	/**
@@ -121,7 +169,15 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void receiveRequest(Message msg) throws EndpointUnavailable {
-		
+		if (msg instanceof KeepAliveRequest) {
+			if(recRequest){
+				// error, received a second request?
+				manager.protocolViolation(endpoint,this);
+				return;
+			}
+			recRequest = true;
+			sendReply(new KeepAliveReply());
+		}
 	}
 
 	/**
@@ -130,7 +186,11 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void sendReply(Message msg) throws EndpointUnavailable {
-		
+		try{
+			endpoint.send(msg);
+		} catch (EndpointUnavailable endpointUnavailable) {
+			endpointUnavailable.printStackTrace();
+		}
 	}
 	
 	

@@ -49,7 +49,7 @@ public class ClientManager extends Manager {
 				//ignore...
 			}
 		}, 120000);
-		
+
 		
 		try {
 			// just wait for this thread to terminate
@@ -110,6 +110,13 @@ public class ClientManager extends Manager {
 	 */
 	@Override
 	public void endpointDisconnectedAbruptly(Endpoint endpoint) {
+
+		for (int i = 0; i < 10; i++) {
+			pb.Utils.getInstance().setTimeout(() -> {
+				endpointReady(endpoint);
+				log.severe("trying to reconnect");
+			}, 5000);
+		}
 		log.severe("connection with server terminated abruptly");
 		endpoint.close();
 	}
@@ -120,6 +127,12 @@ public class ClientManager extends Manager {
 	 */
 	@Override
 	public void endpointSentInvalidMessage(Endpoint endpoint) {
+		for (int i = 0; i < 10; i++) {
+			pb.Utils.getInstance().setTimeout(() -> {
+				endpointReady(endpoint);
+				log.severe("trying to reconnect");
+			}, 5000);
+		}
 		log.severe("server sent an invalid message");
 		endpoint.close();
 	}

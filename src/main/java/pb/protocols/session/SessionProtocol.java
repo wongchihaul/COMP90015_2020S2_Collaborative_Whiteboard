@@ -40,12 +40,23 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 	
 	// Use of volatile is in case the thread that calls stopProtocol is different
 	// to the endpoint thread, although in this case it hardly needed.
+
+	/**
+	 * Default delay
+	 */
+	private static final long delay = 20000;
 	
 	/**
 	 * Whether the protocol has started, i.e. start request and reply have been sent,
 	 * or not.
 	 */
 	private volatile boolean protocolRunning=false;
+
+	/**
+	 * Whether received reply or request.
+	 */
+	private volatile boolean recReply=false;
+	private volatile boolean recRequest=false;
 	
 	/**
 	 * Initialise the protocol with an endpoint and manager.
@@ -87,6 +98,13 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 	public void startAsClient() throws EndpointUnavailable {
 		//  send the server a start session request
 		sendRequest(new SessionStartRequest());
+		endpoint.run();
+		pb.Utils.getInstance().setTimeout(() -> {
+			if(!recReply) {
+				manager.endpointTimedOut(endpoint, this);
+				stopProtocol();
+			}
+		}, delay);
 	}
 
 	/**
@@ -95,6 +113,13 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 	@Override
 	public void startAsServer() {
 		// nothing to do really
+		endpoint.run();		// Keep reading messages from the socket until interrupted. And response request immediately
+		pb.Utils.getInstance().setTimeout(() -> {
+			if(!recRequest){
+				manager.endpointTimedOut(endpoint, this);
+				stopProtocol();
+			}
+		}, delay);			// For first 20 sec, check whether received Request from Clients.
 	}
 	
 	/**
@@ -140,6 +165,7 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 			protocolRunning=false;
 			manager.sessionStopped(endpoint);
 		}
+		recReply = true;
 	}
 
 	/**
@@ -170,7 +196,7 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 			sendReply(new SessionStopReply());
 			manager.sessionStopped(endpoint);
 		}
-		
+		recRequest = true;
 	}
 
 	/**

@@ -92,18 +92,9 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 * 
 	 */
 	public void startAsServer() {
+		log.info("KAP start server");
+
 		endpoint.run();        // Keep reading messages from the socket until interrupted. And response request immediately
-		while (true) {
-			pb.Utils.getInstance().setTimeout(() -> {
-				if (recRequest) {
-					recRequest = false;
-				} else {
-					manager.endpointTimedOut(endpoint, this);
-					stopProtocol();
-					return;
-				}
-			}, delay);            // Every 20 sec, check whether received KeepAliveRequest from Clients.
-		}
 	}
 	
 	/**
@@ -117,20 +108,9 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 * 
 	 */
 	public void startAsClient() throws EndpointUnavailable {
+		log.info("KAP start client");
 		sendRequest(new KeepAliveRequest());
 		endpoint.run();            // Keep reading messages from the socket until interrupted.
-		while (true) {
-			pb.Utils.getInstance().setTimeout(() -> {
-				if (recReply) {
-					sendRequest(new KeepAliveRequest());
-					recReply = false;
-				} else {
-					manager.endpointTimedOut(endpoint, this);
-					stopProtocol();
-					return;
-				}
-			}, delay);            // Every 20 sec, check whether received KeepAliveRequest from Server. And then send request.
-		}
 	}
 
 	/**
@@ -152,14 +132,16 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void receiveReply(Message msg) {
-		if (msg instanceof KeepAliveReply) {
-			if(recReply){
-				// error, received a second reply?
-				manager.protocolViolation(endpoint,this);
-				return;
+		pb.Utils.getInstance().setTimeout(() -> {
+			if (msg instanceof KeepAliveReply) {
+				log.info("Received Reply");
+				sendRequest(new KeepAliveRequest());
+			} else {
+				manager.endpointTimedOut(endpoint, this);
+				stopProtocol();
 			}
-			recReply = true;
-		}
+		}, delay);
+
 	}
 
 	/**
@@ -169,15 +151,16 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void receiveRequest(Message msg) throws EndpointUnavailable {
-		if (msg instanceof KeepAliveRequest) {
-			if(recRequest){
-				// error, received a second request?
-				manager.protocolViolation(endpoint,this);
-				return;
+		pb.Utils.getInstance().setTimeout(() -> {
+			if (msg instanceof KeepAliveRequest) {
+				log.info("Received Request");
+				sendReply(new KeepAliveReply());
+			} else {
+				manager.endpointTimedOut(endpoint, this);
+				stopProtocol();
 			}
-			recRequest = true;
-			sendReply(new KeepAliveReply());
-		}
+		}, delay);
+
 	}
 
 	/**

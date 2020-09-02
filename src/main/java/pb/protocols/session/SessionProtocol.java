@@ -1,5 +1,6 @@
 package pb.protocols.session;
 
+import java.awt.event.WindowFocusListener;
 import java.util.logging.Logger;
 
 import pb.Endpoint;
@@ -97,12 +98,22 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 	@Override
 	public void startAsClient() throws EndpointUnavailable {
 		//  send the server a start session request
-		sendRequest(new SessionStartRequest());
+//		pb.Utils.getInstance().setTimeout(() ->
+//		{
+//			log.info("HEllO WORLD");
+//			sendRequest(new SessionStartRequest());
+//		}, delay + 10000);
+		log.info("HEllO WORLD");
 		endpoint.run();
 		pb.Utils.getInstance().setTimeout(() -> {
 			if(!recReply) {
 				manager.endpointTimedOut(endpoint, this);
+				endpoint.close();
+				log.info("truly timeout?");
 				stopProtocol();
+
+			}else {
+				log.info("received session reply");
 			}
 		}, delay);
 	}
@@ -117,7 +128,11 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 		pb.Utils.getInstance().setTimeout(() -> {
 			if(!recRequest){
 				manager.endpointTimedOut(endpoint, this);
+				endpoint.close();
+				log.info("truly timeout?");
 				stopProtocol();
+			} else {
+				log.info("received session request");
 			}
 		}, delay);			// For first 20 sec, check whether received Request from Clients.
 	}
@@ -148,23 +163,30 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 	 */
 	@Override
 	public void receiveReply(Message msg) {
-		if(msg instanceof SessionStartReply) {
-			if(protocolRunning){
-				// error, received a second reply?
-				manager.protocolViolation(endpoint,this);
-				return;
+		pb.Utils.getInstance().setTimeout(() -> {
+			if(msg instanceof SessionStartReply) {
+				log.info("received session reply");
+				if(protocolRunning){
+					// error, received a second reply?
+					manager.protocolViolation(endpoint,this);
+					return;
+				}
+				protocolRunning=true;
+				manager.sessionStarted(endpoint);
+			} else if(msg instanceof SessionStopReply) {
+				if(!protocolRunning) {
+					// error, received a second reply?
+					manager.protocolViolation(endpoint,this);
+					return;
+				}
+				protocolRunning=false;
+				manager.sessionStopped(endpoint);
+			} else {
+				manager.endpointTimedOut(endpoint, this);
+				stopProtocol();
 			}
-			protocolRunning=true;
-			manager.sessionStarted(endpoint);
-		} else if(msg instanceof SessionStopReply) {
-			if(!protocolRunning) {
-				// error, received a second reply?
-				manager.protocolViolation(endpoint,this);
-				return;
-			}
-			protocolRunning=false;
-			manager.sessionStopped(endpoint);
-		}
+		}, delay);
+
 		recReply = true;
 	}
 
@@ -177,25 +199,32 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 	 */
 	@Override
 	public void receiveRequest(Message msg) throws EndpointUnavailable {
-		if(msg instanceof SessionStartRequest) {
-			if(protocolRunning) {
-				// error, received a second request?
-				manager.protocolViolation(endpoint,this);
-				return;
+		pb.Utils.getInstance().setTimeout(() -> {
+			if(msg instanceof SessionStartRequest) {
+				log.info("received session request");
+				if(protocolRunning) {
+					// error, received a second request?
+					manager.protocolViolation(endpoint,this);
+					return;
+				}
+				protocolRunning=true;
+				sendReply(new SessionStartReply());
+				manager.sessionStarted(endpoint);
+			} else if(msg instanceof SessionStopRequest) {
+				if(!protocolRunning) {
+					// error, received a second request?
+					manager.protocolViolation(endpoint,this);
+					return;
+				}
+				protocolRunning=false;
+				sendReply(new SessionStopReply());
+				manager.sessionStopped(endpoint);
+			} else {
+				manager.endpointTimedOut(endpoint, this);
+				stopProtocol();
 			}
-			protocolRunning=true;
-			sendReply(new SessionStartReply());
-			manager.sessionStarted(endpoint);
-		} else if(msg instanceof SessionStopRequest) {
-			if(!protocolRunning) {
-				// error, received a second request?
-				manager.protocolViolation(endpoint,this);
-				return;
-			}
-			protocolRunning=false;
-			sendReply(new SessionStopReply());
-			manager.sessionStopped(endpoint);
-		}
+		}, delay);
+
 		recRequest = true;
 	}
 

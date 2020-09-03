@@ -32,9 +32,13 @@ public class ClientManager extends Manager {
 	private SessionProtocol sessionProtocol;
 	private KeepAliveProtocol keepAliveProtocol;
 	private Socket socket;
+	private String host;
+	private int port;
+	private boolean[] isReconnect = new boolean[10];
 	
 	public ClientManager(String host,int port) throws UnknownHostException, IOException {
-		
+		this.host = host;
+		this.port = port;
 		socket=new Socket(InetAddress.getByName(host),port);
 		Endpoint endpoint = new Endpoint(socket,this);
 		endpoint.start();
@@ -58,8 +62,12 @@ public class ClientManager extends Manager {
 			// just make sure the ioThread is going to terminate
 			endpoint.close();
 		}
+		pb.Utils.getInstance().setTimeout(() -> {
+			Utils.getInstance().cleanUp();
+		}, 5000 * 11); 						//this one would cancel settimeout so I postpone it until all
+													//reconnections complete
 
-		Utils.getInstance().cleanUp();
+
 	}
 
 	/**
@@ -112,6 +120,30 @@ public class ClientManager extends Manager {
 	public void endpointDisconnectedAbruptly(Endpoint endpoint) {
 		log.severe("connection with server terminated abruptly");
 		endpoint.close();
+		for (int i = 0; i < 10; i++) {
+			int finalI = i;
+			pb.Utils.getInstance().setTimeout(()->{
+				if(socket.isClosed() && !isReconnect[finalI]){
+					log.info("*****************TRY TO RECONNECT " + finalI + " TIMES****************");
+					isReconnect[finalI] = true;
+					try {
+						socket=new Socket(InetAddress.getByName(this.host),this.port);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+					Endpoint endpoint1 = new Endpoint(socket,this);
+					endpoint1.start();
+					try {
+						// just wait for this thread to terminate
+						endpoint1.join();
+					} catch (InterruptedException e) {
+						// just make sure the ioThread is going to terminate
+						endpoint1.close();
+					}
+				}
+			}, 5000 * i);
+		}
+
 	}
 
 	/**
@@ -122,8 +154,10 @@ public class ClientManager extends Manager {
 	public void endpointSentInvalidMessage(Endpoint endpoint) {
 		log.severe("server sent an invalid message");
 		endpoint.close();
+
 	}
-	
+
+
 
 	/**
 	 * The protocol on the endpoint is not responding.
@@ -133,7 +167,9 @@ public class ClientManager extends Manager {
 	public void endpointTimedOut(Endpoint endpoint,Protocol protocol) {
 		log.severe("server has timed out");
 		endpoint.close();
+
 	}
+
 
 	/**
 	 * The protocol on the endpoint has been violated.
@@ -190,5 +226,6 @@ public class ClientManager extends Manager {
 			return false;
 		}
 	}
+
 
 }

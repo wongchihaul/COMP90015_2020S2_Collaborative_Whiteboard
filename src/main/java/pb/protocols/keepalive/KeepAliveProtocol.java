@@ -1,12 +1,11 @@
 package pb.protocols.keepalive;
 
-import java.time.Instant;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 import pb.Endpoint;
 import pb.EndpointUnavailable;
 import pb.Manager;
-import pb.Utils;
 import pb.protocols.Message;
 import pb.protocols.Protocol;
 import pb.protocols.IRequestReplyProtocol;
@@ -54,8 +53,9 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	/**
 	 * Whether received reply or request.
 	 */
-	private volatile boolean recReply=false;
-	private volatile boolean recRequest=false;
+	private volatile boolean[] recReply = new boolean[] {false};
+	private volatile boolean[] recRequest= new boolean[] {false};
+
 
 
 
@@ -81,7 +81,7 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void stopProtocol() {
-		endpoint.stopProtocol(this.getProtocolName());
+//		endpoint.stopProtocol(this.getProtocolName());
 	}
 	
 	/*
@@ -93,8 +93,16 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	public void startAsServer() {
 		log.info("KAP start server");
-
-		endpoint.run();        // Keep reading messages from the socket until interrupted. And response request immediately
+		for (int i = 1; i < 100; i++) {			//have tried while(true){} , but it could not receive and get stuck
+			pb.Utils.getInstance().setTimeout(() -> {
+				log.info("recRequest should be true, and in fact it is :" + recRequest[0]);
+				if (!recRequest[0]) {
+					manager.endpointTimedOut(endpoint, this);
+					stopProtocol();
+				}
+				recRequest[0] = false;
+			}, delay * i);
+		}
 	}
 	
 	/**
@@ -110,7 +118,22 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	public void startAsClient() throws EndpointUnavailable {
 		log.info("KAP start client");
 		sendRequest(new KeepAliveRequest());
-		endpoint.run();            // Keep reading messages from the socket until interrupted.
+		for (int i = 1; i < 100; i++) {		//have tried while(true){} , but it could only send but not receive, and also get stuck
+			pb.Utils.getInstance().setTimeout(() -> {
+				log.info("recReply should be true, and in fact it is :" + recReply[0]);
+				if (!recReply[0]) {
+					manager.endpointTimedOut(endpoint, this);
+					stopProtocol();
+				}
+				recReply[0] = false;
+				try {
+					sendRequest(new KeepAliveRequest());
+				} catch (EndpointUnavailable endpointUnavailable) {
+					endpointUnavailable.printStackTrace();
+				}
+			}, delay * i);
+		}
+
 	}
 
 	/**
@@ -132,15 +155,11 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void receiveReply(Message msg) {
-		pb.Utils.getInstance().setTimeout(() -> {
-			if (msg instanceof KeepAliveReply) {
-				log.info("Received Reply");
-				sendRequest(new KeepAliveRequest());
-			} else {
-				manager.endpointTimedOut(endpoint, this);
-				stopProtocol();
-			}
-		}, delay);
+		if (msg instanceof KeepAliveReply) {
+			log.info("__________Received Reply________");
+			recReply[0] = true;
+		}
+
 
 	}
 
@@ -151,15 +170,11 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void receiveRequest(Message msg) throws EndpointUnavailable {
-		pb.Utils.getInstance().setTimeout(() -> {
-			if (msg instanceof KeepAliveRequest) {
-				log.info("Received Request");
-				sendReply(new KeepAliveReply());
-			} else {
-				manager.endpointTimedOut(endpoint, this);
-				stopProtocol();
-			}
-		}, delay);
+		if (msg instanceof KeepAliveRequest) {
+			log.info("___________Received Request___________");
+			sendReply(new KeepAliveReply());
+			recRequest[0] = true;
+		}
 
 	}
 

@@ -50,7 +50,7 @@ public class ClientManager extends Manager {
 			}
 		}, 120000);
 
-		
+
 		try {
 			// just wait for this thread to terminate
 			endpoint.join();
@@ -58,10 +58,10 @@ public class ClientManager extends Manager {
 			// just make sure the ioThread is going to terminate
 			endpoint.close();
 		}
-		
+
 		Utils.getInstance().cleanUp();
 	}
-	
+
 	/**
 	 * The endpoint is ready to use.
 	 * @param endpoint
@@ -94,7 +94,7 @@ public class ClientManager extends Manager {
 			log.warning("server initiated the session protocol... weird");
 		}
 	}
-	
+
 	/**
 	 * The endpoint close() method has been called and completed.
 	 * @param endpoint
@@ -102,7 +102,7 @@ public class ClientManager extends Manager {
 	public void endpointClosed(Endpoint endpoint) {
 		log.info("connection with server terminated");
 	}
-	
+
 	/**
 	 * The endpoint has abruptly disconnected. It can no longer
 	 * send or receive data.
@@ -111,12 +111,6 @@ public class ClientManager extends Manager {
 	@Override
 	public void endpointDisconnectedAbruptly(Endpoint endpoint) {
 		log.severe("connection with server terminated abruptly");
-		for (int i = 0; i < 10; i++) {
-			pb.Utils.getInstance().setTimeout(() -> {
-				endpoint.start();
-				log.severe("trying to reconnect");
-			}, 5000);
-		}
 		endpoint.close();
 	}
 
@@ -126,12 +120,6 @@ public class ClientManager extends Manager {
 	 */
 	@Override
 	public void endpointSentInvalidMessage(Endpoint endpoint) {
-		for (int i = 0; i < 10; i++) {
-			pb.Utils.getInstance().setTimeout(() -> {
-				endpoint.start();
-				log.severe("trying to reconnect");
-			}, 5000);
-		}
 		log.severe("server sent an invalid message");
 		endpoint.close();
 	}

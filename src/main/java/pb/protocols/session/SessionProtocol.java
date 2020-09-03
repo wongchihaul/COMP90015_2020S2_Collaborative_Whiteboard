@@ -188,7 +188,7 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 			}
 			protocolRunning=true;
 			recRequest[0] = true;
-//			sendReply(new SessionStartReply());
+			sendReply(new SessionStartReply());
 			manager.sessionStarted(endpoint);
 		} else if(msg instanceof SessionStopRequest) {
 			if(!protocolRunning) {

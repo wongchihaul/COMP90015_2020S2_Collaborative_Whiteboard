@@ -93,23 +93,23 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	public void startAsServer() {
 		log.info("KAP start server");
-		for (int i = 1; i < 100; i++) {			//have tried while(true){} , but it could not receive and get stuck
-			pb.Utils.getInstance().setTimeout(() -> {
-				log.info("recRequest should be true, and in fact it is :" + recRequest[0]);
-				if (!recRequest[0]) {
-					manager.endpointTimedOut(endpoint, this);
-					stopProtocol();
-				}
-				recRequest[0] = false;
-			}, delay * i);
-		}
+		checkClientTimeout();
 	}
 	
 	/**
 	 * 
 	 */
 	public void checkClientTimeout() {
-
+		pb.Utils.getInstance().setTimeout(() -> {
+			log.info("recRequest should be true, and in fact it is :" + recRequest[0]);
+			if (!recRequest[0]) {
+				manager.endpointTimedOut(endpoint, this);
+				stopProtocol();
+			} else {
+				recRequest[0] = false;
+				checkClientTimeout();
+			}
+		}, delay);
 	}
 	
 	/**
@@ -118,22 +118,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	public void startAsClient() throws EndpointUnavailable {
 		log.info("KAP start client");
 		sendRequest(new KeepAliveRequest());
-		for (int i = 1; i < 100; i++) {		//have tried while(true){} , but it could only send but not receive, and also get stuck
-			pb.Utils.getInstance().setTimeout(() -> {
-				log.info("recReply should be true, and in fact it is :" + recReply[0]);
-				if (!recReply[0]) {
-					manager.endpointTimedOut(endpoint, this);
-					stopProtocol();
-				}
-				recReply[0] = false;
-				try {
-					sendRequest(new KeepAliveRequest());
-				} catch (EndpointUnavailable endpointUnavailable) {
-					endpointUnavailable.printStackTrace();
-				}
-			}, delay * i);
-		}
-
 	}
 
 	/**
@@ -142,12 +126,23 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void sendRequest(Message msg) throws EndpointUnavailable {
-		try{
-			endpoint.send(msg);
-		} catch (EndpointUnavailable endpointUnavailable) {
-			endpointUnavailable.printStackTrace();
-		}
+		endpoint.send(msg);
+		pb.Utils.getInstance().setTimeout(() -> {
+			log.info("recReply should be true, and in fact it is :" + recReply[0]);
+			if (!recReply[0]) {
+				manager.endpointTimedOut(endpoint, this);
+				stopProtocol();
+			} else{
+					try {
+						recReply[0] = false;
+						sendRequest(msg);
+					} catch (EndpointUnavailable endpointUnavailable) {
+						endpointUnavailable.printStackTrace();
+					}
+				}
+			}, delay);
 	}
+
 
 	/**
 	 * 

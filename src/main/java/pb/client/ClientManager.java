@@ -34,25 +34,28 @@ public class ClientManager extends Manager {
 	private Socket socket;
 	private String host;
 	private int port;
-	private boolean[] isReconnect = new boolean[10];
+	private final Socket[] sockets = new Socket[1];
+	private final int[] reconTimes = new int[]{0};
+	private final boolean[] isReconnects = new boolean[]{true};
 	
 	public ClientManager(String host,int port) throws UnknownHostException, IOException {
 		this.host = host;
 		this.port = port;
 		socket=new Socket(InetAddress.getByName(host),port);
+		sockets[0] = socket;
 		Endpoint endpoint = new Endpoint(socket,this);
 		endpoint.start();
 		
 		// simulate the client shutting down after 2mins
 		// this will be removed when the client actually does something
 		// controlled by the user
-		Utils.getInstance().setTimeout(()->{
-			try {
-				sessionProtocol.stopSession();
-			} catch (EndpointUnavailable e) {
-				//ignore...
-			}
-		}, 120000);
+//		Utils.getInstance().setTimeout(()->{
+//			try {
+//				sessionProtocol.stopSession();
+//			} catch (EndpointUnavailable e) {
+//				//ignore...
+//			}
+//		}, 120000);
 
 
 		try {
@@ -62,12 +65,8 @@ public class ClientManager extends Manager {
 			// just make sure the ioThread is going to terminate
 			endpoint.close();
 		}
-		pb.Utils.getInstance().setTimeout(() -> {
-			Utils.getInstance().cleanUp();
-		}, 5000 * 11); 						//this one would cancel settimeout so I postpone it until all
-													//reconnections complete
 
-
+		Utils.getInstance().cleanUp(); //this one would cancel settimeout in tryReconnect() so I move it to tryReconnect()
 	}
 
 	/**
@@ -120,29 +119,7 @@ public class ClientManager extends Manager {
 	public void endpointDisconnectedAbruptly(Endpoint endpoint) {
 		log.severe("connection with server terminated abruptly");
 		endpoint.close();
-		for (int i = 0; i < 10; i++) {
-			int finalI = i;
-			pb.Utils.getInstance().setTimeout(()->{
-				if(socket.isClosed() && !isReconnect[finalI]){
-					log.info("*****************TRY TO RECONNECT " + finalI + " TIMES****************");
-					isReconnect[finalI] = true;
-					try {
-						socket=new Socket(InetAddress.getByName(this.host),this.port);
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-					Endpoint endpoint1 = new Endpoint(socket,this);
-					endpoint1.start();
-					try {
-						// just wait for this thread to terminate
-						endpoint1.join();
-					} catch (InterruptedException e) {
-						// just make sure the ioThread is going to terminate
-						endpoint1.close();
-					}
-				}
-			}, 5000 * i);
-		}
+		tryReconnect(this.sockets, reconTimes, isReconnects);
 
 	}
 
@@ -227,5 +204,43 @@ public class ClientManager extends Manager {
 		}
 	}
 
+
+	public void tryReconnect(Socket[] sockets, int[] reconTimes, boolean[] isReconnects) {
+		if (reconTimes[0] == 10) {
+			Utils.getInstance().cleanUp();
+		}
+		else
+		{
+			pb.Utils.getInstance().setTimeout(() -> {
+						log.info("*******1.isReconnect is " + isReconnects[0]);
+						log.info("*******1.socket is " + sockets[0] + " and it is closed?: " + sockets[0].isClosed());
+						log.info("*******1.reconTime is " + reconTimes[0]);
+						if (sockets[0].isClosed() && isReconnects[0]) {
+							try {
+								sockets[0] = new Socket(InetAddress.getByName(this.host), this.port);
+								log.info("*******2.socket is " + sockets[0]);
+								log.info("*******1.host is " + this.host);
+								log.info("*******1.port is " + this.port);
+								log.info("*********TRY TO RECONNECT " + reconTimes[0] + " TIMES*********" );
+								Endpoint endpoint1 = new Endpoint(sockets[0], this);
+								endpoint1.start();
+								isReconnects[0] = false;
+								try {
+									endpoint1.join();
+								} catch (InterruptedException e) {
+									endpoint1.close();
+								}
+								Utils.getInstance().cleanUp();
+							} catch (IOException e) {
+								log.info("**********SOCKET THIS TIME FAILED, TRY AGAIN**********");
+								isReconnects[0] = true;
+								++ reconTimes[0];
+								tryReconnect(sockets, reconTimes, isReconnects);
+							}
+						}
+					}
+					, 5000);
+		}
+	}
 
 }

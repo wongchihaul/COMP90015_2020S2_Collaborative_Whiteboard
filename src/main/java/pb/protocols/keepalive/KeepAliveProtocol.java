@@ -104,7 +104,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 			if (!recRequest[0]) {
 				manager.endpointTimedOut(endpoint, this);
 				stopProtocol();
-				recRequest[0] = true;
 			} else {
 				recRequest[0] = false;
 				checkClientTimeout();
@@ -131,7 +130,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 				if (!recReply[0]) {
 					manager.endpointTimedOut(endpoint, this);
 					stopProtocol();
-					recReply[0] = true;
 				} else{
 					try {
 						recReply[0] = false;

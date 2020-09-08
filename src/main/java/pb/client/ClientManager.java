@@ -66,7 +66,7 @@ public class ClientManager extends Manager {
 			endpoint.close();
 		}
 
-		Utils.getInstance().cleanUp(); //this one would cancel settimeout in tryReconnect() so I move it to tryReconnect()
+//		Utils.getInstance().cleanUp(); //this one would cancel settimeout in tryReconnect() so I move it to tryReconnect()
 	}
 
 	/**
@@ -119,8 +119,7 @@ public class ClientManager extends Manager {
 	public void endpointDisconnectedAbruptly(Endpoint endpoint) {
 		log.severe("connection with server terminated abruptly");
 		endpoint.close();
-		tryReconnect(this.sockets, reconTimes, isReconnects);
-
+		tryReconnect(sockets, reconTimes, isReconnects);
 	}
 
 	/**
@@ -229,8 +228,11 @@ public class ClientManager extends Manager {
 									endpoint1.join();
 								} catch (InterruptedException e) {
 									endpoint1.close();
+									log.info("**********ENDPOINT THIS TIME FAILED, TRY AGAIN**********");
+									isReconnects[0] = true;
+									++ reconTimes[0];
+									tryReconnect(sockets, reconTimes, isReconnects);
 								}
-								Utils.getInstance().cleanUp();
 							} catch (IOException e) {
 								log.info("**********SOCKET THIS TIME FAILED, TRY AGAIN**********");
 								isReconnects[0] = true;

@@ -55,6 +55,7 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	private volatile boolean[] recReply = new boolean[] {false};
 	private volatile boolean[] recRequest= new boolean[] {false};
+	private volatile boolean[] OKtoSend = new boolean[]{true};
 
 
 
@@ -81,7 +82,8 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void stopProtocol() {
-//		endpoint.stopProtocol(this.getProtocolName());
+		OKtoSend[0] = false;
+//		pb.Utils.getInstance().cleanUp();
 	}
 	
 	/*
@@ -93,6 +95,7 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	public void startAsServer() {
 		log.info("KAP start server");
+		log.info("______This Server Endpoint is " + endpoint.getName());
 		checkClientTimeout();
 	}
 	
@@ -105,6 +108,7 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 			if (!recRequest[0]) {
 				manager.endpointTimedOut(endpoint, this);
 				stopProtocol();
+				recRequest[0] = true;
 			} else {
 				recRequest[0] = false;
 				checkClientTimeout();
@@ -117,6 +121,7 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	public void startAsClient() throws EndpointUnavailable {
 		log.info("KAP start client");
+		log.info("______This Client Endpoint is " + endpoint.getName());
 		sendRequest(new KeepAliveRequest());
 	}
 
@@ -126,21 +131,24 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void sendRequest(Message msg) throws EndpointUnavailable {
-		endpoint.send(msg);
-		pb.Utils.getInstance().setTimeout(() -> {
-			log.info("recReply should be true, and in fact it is :" + recReply[0]);
-			if (!recReply[0]) {
-				manager.endpointTimedOut(endpoint, this);
-				stopProtocol();
-			} else{
+		if(OKtoSend[0]){
+			endpoint.send(msg);
+			pb.Utils.getInstance().setTimeout(() -> {
+				log.info("recReply should be true, and in fact it is :" + recReply[0]);
+				if (!recReply[0]) {
+					manager.endpointTimedOut(endpoint, this);
+					stopProtocol();
+					recReply[0] = true;
+				} else{
 					try {
 						recReply[0] = false;
 						sendRequest(msg);
 					} catch (EndpointUnavailable endpointUnavailable) {
-						endpointUnavailable.printStackTrace();
+						log.info("EndpointUnavailable" + endpoint.getName());
 					}
 				}
 			}, delay);
+		}
 	}
 
 
@@ -179,10 +187,13 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	@Override
 	public void sendReply(Message msg) throws EndpointUnavailable {
-		try{
-			endpoint.send(msg);
-		} catch (EndpointUnavailable endpointUnavailable) {
-			endpointUnavailable.printStackTrace();
+		if(OKtoSend[0])
+		{
+			try{
+				endpoint.send(msg);
+			} catch (EndpointUnavailable endpointUnavailable) {
+				endpointUnavailable.printStackTrace();
+			}
 		}
 	}
 	

@@ -99,7 +99,6 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 		//  send the server a start session request
 		sendRequest(new SessionStartRequest());
 		pb.Utils.getInstance().setTimeout(() -> {
-			log.info("recReply should be true, and in fact it is :" + recReply[0]);
 			if (!recReply[0]) {
 				manager.endpointTimedOut(endpoint, this);
 				stopProtocol();
@@ -115,7 +114,6 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 	public void startAsServer() {
 		// nothing to do really
 		pb.Utils.getInstance().setTimeout(() -> {
-			log.info("recRequest should be true, and in fact it is :" + recRequest[0]);
 			if (!recRequest[0]) {
 				manager.endpointTimedOut(endpoint, this);
 				stopProtocol();
@@ -156,7 +154,6 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 				manager.protocolViolation(endpoint,this);
 				return;
 			}
-			log.info("______RECEIVED SESSION REPLY______");
 			protocolRunning=true;
 			recReply[0] = true;
 			manager.sessionStarted(endpoint);
@@ -187,7 +184,6 @@ public class SessionProtocol extends Protocol implements IRequestReplyProtocol {
 				manager.protocolViolation(endpoint,this);
 				return;
 			}
-			log.info("______RECEIVED SESSION REQUEST______");
 			protocolRunning=true;
 			recRequest[0] = true;
 			sendReply(new SessionStartReply());

@@ -211,16 +211,9 @@ public class ClientManager extends Manager {
 		else
 		{
 			pb.Utils.getInstance().setTimeout(() -> {
-						log.info("*******1.isReconnect is " + isReconnects[0]);
-						log.info("*******1.socket is " + sockets[0] + " and it is closed?: " + sockets[0].isClosed());
-						log.info("*******1.reconTime is " + reconTimes[0]);
 						if (sockets[0].isClosed() && isReconnects[0]) {
 							try {
 								sockets[0] = new Socket(InetAddress.getByName(this.host), this.port);
-								log.info("*******2.socket is " + sockets[0]);
-								log.info("*******1.host is " + this.host);
-								log.info("*******1.port is " + this.port);
-								log.info("*********TRY TO RECONNECT " + reconTimes[0] + " TIMES*********" );
 								Endpoint endpoint1 = new Endpoint(sockets[0], this);
 								endpoint1.start();
 								isReconnects[0] = false;
@@ -228,13 +221,11 @@ public class ClientManager extends Manager {
 									endpoint1.join();
 								} catch (InterruptedException e) {
 									endpoint1.close();
-									log.info("**********ENDPOINT THIS TIME FAILED, TRY AGAIN**********");
 									isReconnects[0] = true;
 									++ reconTimes[0];
 									tryReconnect(sockets, reconTimes, isReconnects);
 								}
 							} catch (IOException e) {
-								log.info("**********SOCKET THIS TIME FAILED, TRY AGAIN**********");
 								isReconnects[0] = true;
 								++ reconTimes[0];
 								tryReconnect(sockets, reconTimes, isReconnects);

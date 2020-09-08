@@ -83,7 +83,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	@Override
 	public void stopProtocol() {
 		OKtoSend[0] = false;
-//		pb.Utils.getInstance().cleanUp();
 	}
 	
 	/*
@@ -94,8 +93,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 * 
 	 */
 	public void startAsServer() {
-		log.info("KAP start server");
-		log.info("______This Server Endpoint is " + endpoint.getName());
 		checkClientTimeout();
 	}
 	
@@ -104,7 +101,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 */
 	public void checkClientTimeout() {
 		pb.Utils.getInstance().setTimeout(() -> {
-			log.info("recRequest should be true, and in fact it is :" + recRequest[0]);
 			if (!recRequest[0]) {
 				manager.endpointTimedOut(endpoint, this);
 				stopProtocol();
@@ -120,8 +116,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	 * 
 	 */
 	public void startAsClient() throws EndpointUnavailable {
-		log.info("KAP start client");
-		log.info("______This Client Endpoint is " + endpoint.getName());
 		sendRequest(new KeepAliveRequest());
 	}
 
@@ -134,7 +128,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 		if(OKtoSend[0]){
 			endpoint.send(msg);
 			pb.Utils.getInstance().setTimeout(() -> {
-				log.info("recReply should be true, and in fact it is :" + recReply[0]);
 				if (!recReply[0]) {
 					manager.endpointTimedOut(endpoint, this);
 					stopProtocol();
@@ -144,7 +137,7 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 						recReply[0] = false;
 						sendRequest(msg);
 					} catch (EndpointUnavailable endpointUnavailable) {
-						log.info("EndpointUnavailable" + endpoint.getName());
+						log.info("Endpoint is Unavailable" + endpoint.getName());
 					}
 				}
 			}, delay);
@@ -159,7 +152,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	@Override
 	public void receiveReply(Message msg) {
 		if (msg instanceof KeepAliveReply) {
-			log.info("__________Received Reply________");
 			recReply[0] = true;
 		}
 
@@ -174,7 +166,6 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 	@Override
 	public void receiveRequest(Message msg) throws EndpointUnavailable {
 		if (msg instanceof KeepAliveRequest) {
-			log.info("___________Received Request___________");
 			sendReply(new KeepAliveReply());
 			recRequest[0] = true;
 		}
@@ -192,7 +183,7 @@ public class KeepAliveProtocol extends Protocol implements IRequestReplyProtocol
 			try{
 				endpoint.send(msg);
 			} catch (EndpointUnavailable endpointUnavailable) {
-				endpointUnavailable.printStackTrace();
+				log.info("Endpoint is Unavailable" + endpoint.getName());
 			}
 		}
 	}

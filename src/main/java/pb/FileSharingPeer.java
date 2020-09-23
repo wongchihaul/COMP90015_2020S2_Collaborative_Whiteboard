@@ -1,35 +1,21 @@
 package pb;
 
-import java.io.BufferedReader;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.UnknownHostException;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.logging.Logger;
-
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
+import org.apache.commons.cli.*;
 import org.apache.commons.codec.binary.Base64;
-
 import pb.managers.ClientManager;
 import pb.managers.IOThread;
 import pb.managers.PeerManager;
 import pb.managers.ServerManager;
 import pb.managers.endpoint.Endpoint;
 import pb.utils.Utils;
+
+import java.io.*;
+import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * TODO: for Project 2B The FileSharingPeer is a simple example of using a
@@ -192,14 +178,15 @@ public class FileSharingPeer {
 		 * emitIndexUpdate(...) to send the index updates. Print out something
 		 * informative for the events when they they occur.
 		 */
-		clientManager.on(PeerManager.peerStarted, (args) ->{
+		clientManager.on(PeerManager.peerStarted, (args) -> {
 			Endpoint endpoint = (Endpoint) args[0];
 			System.out.println("Start uploading and sharing");
-			emitIndexUpdate(peerport,filenames, endpoint,clientManager);
-			endpoint.on(IndexServer.indexUpdateError, (args1) ->{
+			emitIndexUpdate(peerport, filenames, endpoint, clientManager);
+			endpoint.emit(IndexServer.peerUpdate, peerport);
+			endpoint.on(IndexServer.indexUpdateError, (args1) -> {
 				log.info("index update error: " + args1[0]);
 			});
-		}).on(PeerManager.peerError,(args)->{
+		}).on(PeerManager.peerError, (args) -> {
 			Endpoint endpoint = (Endpoint) args[0];
 			log.info("Peer ended in error: " + endpoint.getOtherEndpointId());
 		}).on(PeerManager.peerStopped, (args)->{

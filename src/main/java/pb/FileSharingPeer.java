@@ -194,6 +194,7 @@ public class FileSharingPeer {
 		 */
 		clientManager.on(PeerManager.peerStarted, (args) ->{
 			Endpoint endpoint = (Endpoint) args[0];
+			System.out.println("Start uploading and sharing");
 			emitIndexUpdate(peerport,filenames, endpoint,clientManager);
 			endpoint.on(IndexServer.indexUpdateError, (args1) ->{
 				log.info("index update error: " + args1[0]);
@@ -239,6 +240,7 @@ public class FileSharingPeer {
 					log.info("File does not exist: " + fileToShare);
 					endpoint.emit(fileError);
 				}
+				System.out.println("Start transmitting: " + fileToShare);
 				startTransmittingFile(fileToShare,endpoint);
 			});
 		}).on(PeerManager.peerServerManager, (args)->{
@@ -277,11 +279,14 @@ public class FileSharingPeer {
 	 * @param queryResponse
 	 * @throws InterruptedException
 	 */
-	private static void getFileFromPeer(PeerManager peerManager, String response) throws InterruptedException {
+	private static void getFileFromPeer(PeerManager peerManager, String queryResponse) throws InterruptedException {
 		// Create a independent client manager (thread) for each download
 		// response has the format: PeerIP:PeerPort:filename
-		String[] parts = response.split(":", 3);
-		ClientManager clientManager = null;
+		String[] parts = queryResponse.split(":", 3);
+
+
+		System.out.println("Response --> " + queryResponse);
+//		ClientManager clientManager = null;
 
 		/*
 		 * TODO for project 2B. Check that the individual parts returned from the server
@@ -290,9 +295,10 @@ public class FileSharingPeer {
 		 * that has connected.
 		 */
 		if(parts.length != 3){
-			log.info("Response has wrong format.");
+			System.out.println("Response has wrong format.");
 			return;
 		}
+
 		String regex = "^(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|[1-9])\\." +
 		"(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\." +
 		"(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\." +
@@ -322,26 +328,24 @@ public class FileSharingPeer {
 			 * on the clientManager. Listen for fileContents and fileError events on the
 			 * endpoint when available and handle them appropriately. Handle error
 			 * conditions by printing something informative and shutting down the
-			 * connection. Remember to emit a getFile event to request the file form the
+			 * connection. Remember to emit a getFile event to request the file from the
 			 * peer. Print out something informative for the events that occur.
 			 */
-			clientManager = peerManager.connect(Integer.parseInt(parts[1]), parts[0]);
-			ClientManager finalClientManager = clientManager;
+			ClientManager clientManager = peerManager.connect(Integer.parseInt(parts[1]), parts[0]);
 			clientManager.on(PeerManager.peerStarted, (args) ->{
 				Endpoint endpoint = (Endpoint) args[0];
-				finalClientManager.emit(getFile, parts[2]);
+				endpoint.emit(getFile, parts[2]);
 				endpoint.on(fileContents,(args1) -> {
 					String fileContent = (String)args1[0];
 					try {
-						InputStream in = new FileInputStream(fileContent);
 						if(fileContent.length() == 0){
-							log.info("Nothing more to receive, now close IO and shutdown client");
-							in.close();
+							System.out.println("Nothing more to receive, close IO and shutdown now");
 							out.close();
-							finalClientManager.shutdown();
+							clientManager.shutdown();
 						} else{
-							in.transferTo(out);
-							out.flush();
+							synchronized (out) {
+								out.write(Base64.decodeBase64(fileContent));
+							}
 						}
 					} catch (FileNotFoundException e) {
 							log.info("Could not create file: " + parts[2]);
@@ -353,7 +357,7 @@ public class FileSharingPeer {
 					log.info("File Error, stop waiting and shutdown now");
 					try {
 						out.close();
-						finalClientManager.shutdown();
+						clientManager.shutdown();
 					} catch (IOException e) {
 						log.info("IO interrupted");
 					}
@@ -403,7 +407,7 @@ public class FileSharingPeer {
 		 */
 		clientManager.on(PeerManager.peerStarted, (args) ->{
 			Endpoint endpoint = (Endpoint) args[0];
-			clientManager.emit(IndexServer.queryIndex, query);
+			endpoint.emit(IndexServer.queryIndex, query);
 			endpoint.on(IndexServer.queryResponse, (args1) -> {
 				String response = (String)args1[0];
 				try {

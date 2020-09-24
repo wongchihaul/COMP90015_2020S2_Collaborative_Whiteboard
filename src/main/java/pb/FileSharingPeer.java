@@ -1,21 +1,35 @@
 package pb;
 
-import org.apache.commons.cli.*;
-import org.apache.commons.codec.binary.Base64;
-import pb.managers.ClientManager;
-import pb.managers.IOThread;
-import pb.managers.PeerManager;
-import pb.managers.ServerManager;
-import pb.managers.endpoint.Endpoint;
-import pb.utils.Utils;
-
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.logging.Logger;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+import org.apache.commons.codec.binary.Base64;
+
+import pb.managers.ClientManager;
+import pb.managers.IOThread;
+import pb.managers.PeerManager;
+import pb.managers.ServerManager;
+import pb.managers.endpoint.Endpoint;
+import pb.utils.Utils;
 
 /**
  * TODO: for Project 2B The FileSharingPeer is a simple example of using a
@@ -116,7 +130,7 @@ public class FileSharingPeer {
 				}
 			}
 		} catch (IOException e) {
-			endpoint.emit(fileError);
+			endpoint.emit(fileError, "File does not exist");
 		}
 	}
 
@@ -132,7 +146,7 @@ public class FileSharingPeer {
 			InputStream in = new FileInputStream(filename);
 			continueTransmittingFile(in, endpoint);
 		} catch (FileNotFoundException e) {
-			endpoint.emit(fileError);
+			endpoint.emit(fileError, "File does not exist");
 		}
 	}
 
@@ -180,7 +194,6 @@ public class FileSharingPeer {
 		 */
 		clientManager.on(PeerManager.peerStarted, (args) -> {
 			Endpoint endpoint = (Endpoint) args[0];
-			System.out.println("Start uploading and sharing");
 			emitIndexUpdate(peerport, filenames, endpoint, clientManager);
 			endpoint.emit(IndexServer.peerUpdate, peerport);
 			endpoint.on(IndexServer.indexUpdateError, (args1) -> {
@@ -219,16 +232,18 @@ public class FileSharingPeer {
 		 * peerServerManager is ready and when the ioThread event has been received.
 		 * Print out something informative for the events when they occur.
 		 */
-		peerManager.on(PeerManager.peerStarted, (args) ->{
+		final String[] filenamesArray = filenames.toArray(new String[filenames.size()]);
+		peerManager.on(PeerManager.peerStarted, (args) -> {
 			Endpoint endpoint = (Endpoint) args[0];
 			endpoint.on(getFile, (args1) -> {
 				String fileToShare = (String) args1[0];
-				if(!filenames.contains(fileToShare)){
-					log.info("File does not exist: " + fileToShare);
-					endpoint.emit(fileError);
+				if (!Arrays.asList(filenamesArray).contains(fileToShare)) {
+					System.out.println("File does not exist: " + fileToShare);
+					endpoint.emit(fileError, "File does not exist");
+				} else {
+					System.out.println("Start transmitting: " + fileToShare);
+					startTransmittingFile(fileToShare, endpoint);
 				}
-				System.out.println("Start transmitting: " + fileToShare);
-				startTransmittingFile(fileToShare,endpoint);
 			});
 		}).on(PeerManager.peerServerManager, (args)->{
 			ServerManager serverManager = (ServerManager) args[0];
@@ -237,7 +252,7 @@ public class FileSharingPeer {
 				try {
 					uploadFileList(filenames, peerManager, peerport);
 				} catch (UnknownHostException e) {
-					log.info("Host is unknown: " + peerport);
+					System.out.println("Host is unknown: " + peerport);
 				} catch (InterruptedException e) {
 					log.info("Interrupted");
 				}
@@ -271,41 +286,39 @@ public class FileSharingPeer {
 		// response has the format: PeerIP:PeerPort:filename
 		String[] parts = queryResponse.split(":", 3);
 
-
-		System.out.println("Response --> " + queryResponse);
-//		ClientManager clientManager = null;
-
 		/*
 		 * TODO for project 2B. Check that the individual parts returned from the server
 		 * have the correct format and that we make a connection to the peer. Print out
 		 * any errors and just return in this case. Otherwise you have a clientManager
 		 * that has connected.
 		 */
-		if(parts.length != 3){
-			System.out.println("Response has wrong format.");
+
+		if (queryResponse.length() == 0) {
+			log.info("The response is blank");
 			return;
 		}
 
 		String regex = "^(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|[1-9])\\." +
-		"(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\." +
-		"(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\." +
-		"(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)$";
-		if(!parts[0].matches(regex)){
-			log.info("PeerIP Address is invalid.");
+				"(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\." +
+				"(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\." +
+				"(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)$";
+		if (!parts[0].matches(regex)) {
+			System.out.println("PeerIP Address is invalid.");
 			return;
 		}
 
 		try{
 			int PeerPort = Integer.parseInt(parts[1]);
-			if(!(0 < PeerPort && PeerPort <= 65535 )){
-				log.info("PeerPort should be in (0,65535]");
+			if (!(0 < PeerPort && PeerPort <= 65535)) {
+				System.out.println("PeerPort should be in (0,65535]");
 				return;
 			}
-		} catch (NumberFormatException e){
-			log.info("PeerPort should be String form of Integer.");
+		} catch (NumberFormatException e) {
+			System.out.println("PeerPort should be String form of Integer.");
 			return;
 		}
 
+		System.out.println("Downloading file: " + parts[2] + " from: " + parts[0] + ":" + parts[1]);
 
 		try {
 			OutputStream out = new FileOutputStream(parts[2]);
@@ -325,8 +338,8 @@ public class FileSharingPeer {
 				endpoint.on(fileContents,(args1) -> {
 					String fileContent = (String)args1[0];
 					try {
-						if(fileContent.length() == 0){
-							System.out.println("Nothing more to receive, close IO and shutdown now");
+						if(fileContent.length() == 0) {
+							System.out.println(parts[2] + ": Download completed.");
 							out.close();
 							clientManager.shutdown();
 						} else{
@@ -335,13 +348,13 @@ public class FileSharingPeer {
 							}
 						}
 					} catch (FileNotFoundException e) {
-							log.info("Could not create file: " + parts[2]);
+						System.out.println("Could not create file: " + parts[2]);
 					} catch (IOException e) {
 							log.info("IO interrupted");
 					}
 
 				}).on(fileError, (args1) -> {
-					log.info("File Error, stop waiting and shutdown now");
+					System.out.println("ERROR: File " + parts[2] + " does not exist.");
 					try {
 						out.close();
 						clientManager.shutdown();

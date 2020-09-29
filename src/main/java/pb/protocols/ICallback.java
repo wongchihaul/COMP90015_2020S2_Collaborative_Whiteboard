@@ -1,7 +1,9 @@
 package pb.protocols;
 
-import pb.EndpointUnavailable;
-
+@FunctionalInterface
 public interface ICallback {
+	/**
+	 * Callback with no arguments.
+	 */
 	public void callback();
 }

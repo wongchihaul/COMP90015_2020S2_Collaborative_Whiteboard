@@ -32,6 +32,7 @@ import pb.protocols.session.SessionProtocol;
 public class ServerManager extends Manager implements ISessionProtocolHandler,
 	IKeepAliveProtocolHandler, IEventProtocolHandler
 {
+	private String password = "0000";
 	private static Logger log = Logger.getLogger(ServerManager.class.getName());
 	
 	/**
@@ -69,7 +70,7 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 	 * if the received password matches the password for this server.
 	 * Events the server will listen for.
 	 */
-	public static String password="0000";
+
 
 	/**
 	 * Emitted to cause the server to shutdown. Single argument
@@ -143,7 +144,7 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 	 */
 	public ServerManager(int port, String password){
 		this.port=port;
-		ServerManager.password =password;
+		this.password =password;
 		liveEndpoints=new HashSet<>();
 		setName("ServerManager");
 	}
@@ -155,14 +156,7 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 	 * server down, like if they are in a rush, or can wait for existing clients to
 	 * finish up gracefully, or if they can't wait at all, etc.
 	 */
-	public void shutdown(String msg){
-		switch (msg) {
-			case "shutdown" -> shutdown();
-			case "force" -> forceShutdown();
-			case "vader" -> vaderShutdown();
-			default -> System.out.println("Please enter again");
-		}
-	}
+
 
 	public void shutdown() {
 		log.info("server shutdown called");
@@ -203,7 +197,6 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 			log.severe("could not start the io thread");
 			return;
 		}
-		
 		try {
 			// just wait for this thread to terminate
 			ioThread.join();
@@ -304,7 +297,19 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 		 * command line when the server is running. If the secrets match then the
 		 * shutdown is issued, otherwise it is ignored.
 		 */
-
+		endpoint.on(shutdownServer, (args) -> {
+			if(args[0].equals(password)){
+				shutdown();
+			}
+		}).on(forceShutdownServer, (args) -> {
+			if(args[0].equals(password)){
+				forceShutdown();
+			}
+		}).on(vaderShutdownServer, (args) -> {
+			if(args[0].equals(this.password)){
+				vaderShutdown();
+			}
+		});
 
 		
 		KeepAliveProtocol keepAliveProtocol = new KeepAliveProtocol(endpoint,this);

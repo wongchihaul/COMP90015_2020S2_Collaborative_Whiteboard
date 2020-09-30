@@ -1,6 +1,8 @@
 package pb;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -237,14 +239,16 @@ public class IndexServer {
 		 * ServerManager(port,password) initializer (that needs to be created by you in
 		 * ServerMain.java) if the password was given.
 		 */
-		ServerManager serverManager = null;
+		String password = "0000";
 		if(cmd.hasOption("password")){
-			String password = cmd.getOptionValue("password");
-			serverManager = new ServerManager(port, password);
+			password = cmd.getOptionValue("password");
+
 		} else{
-			System.out.println("Please provide a valid password to initialize the IndexServer");
-			help(options);
+			BufferedReader input = new BufferedReader(new InputStreamReader(System.in));
+			System.out.println("Press RETURN to create an IndexServer with default password \"0000\"");
+			input.readLine();
 		}
+		ServerManager serverManager = new ServerManager(port, password);
 
         
         // create a server manager and setup event handlers
@@ -289,7 +293,6 @@ public class IndexServer {
         // start up the server
         log.info("PB Index Server starting up");
         serverManager.start();
-        
     }
 
 }

@@ -1,8 +1,6 @@
 package pb;
 
 import java.io.IOException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import org.apache.commons.cli.CommandLine;
@@ -13,6 +11,8 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
 import pb.managers.ClientManager;
+import pb.managers.ServerManager;
+import pb.managers.endpoint.Endpoint;
 import pb.utils.Utils;
 
 /**
@@ -35,7 +35,13 @@ public class AdminClient  {
 	private static Logger log = Logger.getLogger(AdminClient.class.getName());
 	private static int port=Utils.serverPort; // default port number for the server
 	private static String host=Utils.serverHost; // default host for the server
-	
+	private static String password = "0000";
+	private static boolean normalShutdown = true;
+	private static boolean forceShutdown = false;
+	private static boolean vaderShutdown = false;
+
+
+
 	private static void help(Options options){
 		String header = "PB Admin Client for Unimelb COMP90015\n\n";
 		String footer = "\ncontact aharwood@unimelb.edu.au for issues.";
@@ -65,10 +71,14 @@ public class AdminClient  {
 		 * the user would enter -shutdown for just regular shutdown, -shutdown -force
 		 * for force shutdown and -shutdown -vader for vader shutdown.
 		 */
-		options.addOption("password",true,"password required");
+		options.addOption("password",true,"user's password");
+		options.addOption("shutdown", false, "regular shutdown when there is only shutdown");
+		options.addOption("force", false, "force shutdown");
+		options.addOption("vader", false, "vader shutdown");
 
 
-        CommandLineParser parser = new DefaultParser();
+
+		CommandLineParser parser = new DefaultParser();
         CommandLine cmd = null;
         try {
 			cmd = parser.parse( options, args);
@@ -88,9 +98,22 @@ public class AdminClient  {
         if(cmd.hasOption("host")) {
         	host = cmd.getOptionValue("host");
         }
-		if(cmd.hasOption("Password")){
-			while (!cmd.getOptionValue("Password").equals("0000")) {
-				System.out.println("Please check password" + cmd.getOptionValue("Password"));
+		if(cmd.hasOption("password")){
+			password = cmd.getOptionValue("password");
+			if(password.length() == 0) {
+				System.out.println("Invalid password, using default password: \"0000\" now.");
+				password = "0000";
+			}
+		}
+		if(cmd.hasOption("shutdown")){
+			if(cmd.hasOption("force")){
+				forceShutdown = true;
+				normalShutdown = false;
+			} else if(cmd.hasOption("vader")){
+				vaderShutdown = true;
+				normalShutdown = false;
+			} else{
+				normalShutdown = true;
 			}
 		}
         
@@ -110,11 +133,18 @@ public class AdminClient  {
 		 * Don't forget that you need to modify ServerMain.java to listen for these
 		 * events coming from any client that connects to it.
 		 */
-
-
-
+		clientManager.on(ClientManager.sessionStarted, (eventArgs) -> {
+			Endpoint endpoint = (Endpoint)eventArgs[0];
+			if(normalShutdown){
+				endpoint.emit(ServerManager.shutdownServer, password);
+			} else if(forceShutdown) {
+				endpoint.emit(ServerManager.forceShutdownServer, password);
+			} else if(vaderShutdown) {
+				endpoint.emit(ServerManager.vaderShutdownServer, password);
+			}
+			clientManager.shutdown();
+		});
 		clientManager.join();
         Utils.getInstance().cleanUp();
-        
     }
 }

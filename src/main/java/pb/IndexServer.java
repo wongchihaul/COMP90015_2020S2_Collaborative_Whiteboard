@@ -212,7 +212,8 @@ public class IndexServer {
     	// parse command line options
         Options options = new Options();
         options.addOption("port",true,"server port, an integer");
-        
+		options.addOption("password",true,"server password");
+
         CommandLineParser parser = new DefaultParser();
         CommandLine cmd = null;
         try {
@@ -236,24 +237,17 @@ public class IndexServer {
 		 * ServerManager(port,password) initializer (that needs to be created by you in
 		 * ServerMain.java) if the password was given.
 		 */
-        Options optionsPw = new Options();
-		optionsPw.addOption("Password",true,"server password");
-
-		CommandLineParser parsePw = new DefaultParser();
-		CommandLine cmdPw = null;
-		try {
-			cmdPw = parser.parse(options, args);
-		} catch (ParseException e1) {
+		ServerManager serverManager = null;
+		if(cmd.hasOption("password")){
+			String password = cmd.getOptionValue("password");
+			serverManager = new ServerManager(port, password);
+		} else{
+			System.out.println("Please provide a valid password to initialize the IndexServer");
 			help(options);
 		}
 
-		while (!cmd.getOptionValue("Password").equals("0000")){
-			assert cmdPw != null;
-			System.out.println("Please check password"+cmdPw.getOptionValue("Password"));
-		}
         
         // create a server manager and setup event handlers
-        ServerManager serverManager = new ServerManager(port);
         
         // event handlers
         // we must define the event handler callbacks BEFORE starting

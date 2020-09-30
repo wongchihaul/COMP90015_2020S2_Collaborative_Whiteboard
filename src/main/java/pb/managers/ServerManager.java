@@ -69,7 +69,8 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 	 * if the received password matches the password for this server.
 	 * Events the server will listen for.
 	 */
-	
+	public static String password="0000";
+
 	/**
 	 * Emitted to cause the server to shutdown. Single argument
 	 * is the password to check.
@@ -96,7 +97,7 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 	 * </ul>
 	 */
 	public static final String vaderShutdownServer="VADER_SHUTDOWN_SERVER";
-	
+
 	/**
 	 * The io thread accepts connections and informs the server manager
 	 * of the connection's socket.
@@ -140,7 +141,12 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 	 * TODO: for Project 2B. Create an initializer that does as above but also takes
 	 * a password as an argument.
 	 */
-	
+	public ServerManager(int port, String password){
+		this.port=port;
+		ServerManager.password =password;
+		liveEndpoints=new HashSet<>();
+		setName("ServerManager");
+	}
 	/**
 	 * TODO: for Project 2B. Use one of these methods appropriately for the event
 	 * emitted, when your server receives a correct password. Usually a single
@@ -149,7 +155,15 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 	 * server down, like if they are in a rush, or can wait for existing clients to
 	 * finish up gracefully, or if they can't wait at all, etc.
 	 */
-	
+	public void shutdown(String msg){
+		switch (msg) {
+			case "shutdown" -> shutdown();
+			case "force" -> forceShutdown();
+			case "vader" -> vaderShutdown();
+			default -> System.out.println("Please enter again");
+		}
+	}
+
 	public void shutdown() {
 		log.info("server shutdown called");
 		// this will not force existing clients to finish their sessions
@@ -290,6 +304,8 @@ public class ServerManager extends Manager implements ISessionProtocolHandler,
 		 * command line when the server is running. If the secrets match then the
 		 * shutdown is issued, otherwise it is ignored.
 		 */
+
+
 		
 		KeepAliveProtocol keepAliveProtocol = new KeepAliveProtocol(endpoint,this);
 		try {

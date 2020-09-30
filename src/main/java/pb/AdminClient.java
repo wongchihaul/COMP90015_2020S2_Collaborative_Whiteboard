@@ -1,6 +1,8 @@
 package pb;
 
 import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import org.apache.commons.cli.CommandLine;
@@ -54,6 +56,7 @@ public class AdminClient  {
         options.addOption("host",true,"hostname, a string");
         
         /*
+		 *
 		 * TODO for project 2B. Include a command line option to read a secret
 		 * (password) from the user. It can simply be a plain text password entered as a
 		 * command line option. Use "password" as the name of the option, i.e.
@@ -62,7 +65,9 @@ public class AdminClient  {
 		 * the user would enter -shutdown for just regular shutdown, -shutdown -force
 		 * for force shutdown and -shutdown -vader for vader shutdown.
 		 */
-        
+		options.addOption("password",true,"password required");
+
+
         CommandLineParser parser = new DefaultParser();
         CommandLine cmd = null;
         try {
@@ -83,6 +88,11 @@ public class AdminClient  {
         if(cmd.hasOption("host")) {
         	host = cmd.getOptionValue("host");
         }
+		if(cmd.hasOption("Password")){
+			while (!cmd.getOptionValue("Password").equals("0000")) {
+				System.out.println("Please check password" + cmd.getOptionValue("Password"));
+			}
+		}
         
         // start up the client
         log.info("PB Client starting up");
@@ -100,8 +110,10 @@ public class AdminClient  {
 		 * Don't forget that you need to modify ServerMain.java to listen for these
 		 * events coming from any client that connects to it.
 		 */
-        
-        clientManager.join();
+
+
+
+		clientManager.join();
         Utils.getInstance().cleanUp();
         
     }

@@ -236,7 +236,21 @@ public class IndexServer {
 		 * ServerManager(port,password) initializer (that needs to be created by you in
 		 * ServerMain.java) if the password was given.
 		 */
-        
+        Options optionsPw = new Options();
+		optionsPw.addOption("Password",true,"server password");
+
+		CommandLineParser parsePw = new DefaultParser();
+		CommandLine cmdPw = null;
+		try {
+			cmdPw = parser.parse(options, args);
+		} catch (ParseException e1) {
+			help(options);
+		}
+
+		while (!cmd.getOptionValue("Password").equals("0000")){
+			assert cmdPw != null;
+			System.out.println("Please check password"+cmdPw.getOptionValue("Password"));
+		}
         
         // create a server manager and setup event handlers
         ServerManager serverManager = new ServerManager(port);

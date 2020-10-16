@@ -3,3 +3,9 @@
     gitingore rules have no effects on pre-existing files
  2. Manually removed Endpoint-related and Manager-related Java files of proj-2a
     which will come into conflict with the counterparts in proj-2b
+
+
+
+---
+
+UPDATE: Created New Folder *proj3* For Project3

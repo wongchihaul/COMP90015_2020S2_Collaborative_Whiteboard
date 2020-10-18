@@ -276,10 +276,10 @@ public class WhiteboardApp {
 	 ******/
 	
 	// From whiteboard server
-	
+	// TODO
 	
 	// From whiteboard peer
-	
+	//TODO
 	
 	
 	/******
@@ -293,7 +293,7 @@ public class WhiteboardApp {
 	 * Wait for the peer manager to finish all threads.
 	 */
 	public void waitToFinish() {
-		
+		//TODO
 	}
 	
 	/**
@@ -346,7 +346,7 @@ public class WhiteboardApp {
 				drawSelectedWhiteboard(); // just redraw the screen without the path
 			} else {
 				// was accepted locally, so do remote stuff if needed
-				
+				//TODO
 			}
 		} else {
 			log.severe("path created without a selected board: "+currentPath);
@@ -363,7 +363,7 @@ public class WhiteboardApp {
 				drawSelectedWhiteboard();
 			} else {
 				// was accepted locally, so do remote stuff if needed
-				
+
 				drawSelectedWhiteboard();
 			}
 		} else {
@@ -417,7 +417,7 @@ public class WhiteboardApp {
 			deleteBoard(board.getName());
 		});
     	whiteboards.values().forEach((whiteboard)->{
-    		
+    		//TODO
     	});
 	}
 	

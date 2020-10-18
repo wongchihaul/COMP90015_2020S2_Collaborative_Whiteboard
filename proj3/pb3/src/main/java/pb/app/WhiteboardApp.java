@@ -363,7 +363,7 @@ public class WhiteboardApp {
 				drawSelectedWhiteboard();
 			} else {
 				// was accepted locally, so do remote stuff if needed
-
+				//TODO
 				drawSelectedWhiteboard();
 			}
 		} else {
@@ -380,7 +380,7 @@ public class WhiteboardApp {
 				// some other peer modified the board in between
 				drawSelectedWhiteboard();
 			} else {
-				
+				//TODO
 				drawSelectedWhiteboard();
 			}
 		} else {

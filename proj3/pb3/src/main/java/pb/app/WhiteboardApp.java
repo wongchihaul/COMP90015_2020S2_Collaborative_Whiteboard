@@ -1,31 +1,17 @@
 package pb.app;
 
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Container;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.ItemEvent;
-import java.awt.event.ItemListener;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.logging.Logger;
+import pb.WhiteboardServer;
+import pb.managers.ClientManager;
+import pb.managers.PeerManager;
+import pb.managers.endpoint.Endpoint;
 
-import javax.swing.BoxLayout;
-import javax.swing.JButton;
-import javax.swing.JCheckBox;
-import javax.swing.JComboBox;
-import javax.swing.JFrame;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.net.UnknownHostException;
+import java.time.Instant;
+import java.util.*;
+import java.util.logging.Logger;
 
 
 /**
@@ -158,25 +144,38 @@ public class WhiteboardApp {
 	 * White board map from board name to board object 
 	 */
 	Map<String,Whiteboard> whiteboards;
-	
+
 	/**
 	 * The currently selected white board
 	 */
 	Whiteboard selectedBoard = null;
-	
+
 	/**
 	 * The peer:port string of the peer. This is synonomous with IP:port, host:port,
 	 * etc. where it may appear in comments.
 	 */
-	String peerport="standalone"; // a default value for the non-distributed version
-	
+//	String peerport="standalone"; // a default value for the non-distributed version
+	int peerport;
+	String host;
+	int whiteboardServerPort;
+
+	/**
+	 * Whiteboard being shared (exclude own sharing whiteboard)
+	 */
+	Set<String> sharedWhiteboards;
+
+	/**
+	 * Own whiteboards being shared
+	 */
+	Set<String> ownSharingWhiteboards;
+
 	/*
 	 * GUI objects, you probably don't need to modify these things... you don't
 	 * need to modify these things... don't modify these things [LOTR reference?].
 	 */
-	
+
 	JButton clearBtn, blackBtn, redBtn, createBoardBtn, deleteBoardBtn, undoBtn;
-	JCheckBox sharedCheckbox ;
+	JCheckBox sharedCheckbox;
 	DrawArea drawArea;
 	JComboBox<String> boardComboBox;
 	boolean modifyingComboBox=false;
@@ -185,11 +184,15 @@ public class WhiteboardApp {
 	/**
 	 * Initialize the white board app.
 	 */
-	public WhiteboardApp(int peerPort,String whiteboardServerHost, 
-			int whiteboardServerPort) {
-		whiteboards=new HashMap<>();
-
-		show(peerport);
+	public WhiteboardApp(int peerPort, String whiteboardServerHost,
+						 int whiteboardServerPort) {
+		whiteboards = new HashMap<>();
+		sharedWhiteboards = new HashSet<>();
+		ownSharingWhiteboards = new HashSet<>();
+		this.peerport = peerPort;
+		this.host = whiteboardServerHost;
+		this.whiteboardServerPort = whiteboardServerPort;
+		show(String.valueOf(peerport));
 		
 	}
 	
@@ -265,25 +268,87 @@ public class WhiteboardApp {
 	 * @return port
 	 */
 	public static int getPort(String data) {
-		String[] parts=data.split(":");
+		String[] parts = data.split(":");
 		return Integer.parseInt(parts[1]);
 	}
-	
+
 	/******
-	 * 
+	 *
 	 * Methods called from events.
-	 * 
+	 *
 	 ******/
-	
+
 	// From whiteboard server
-	// TODO
-	
+	public void shareBoard(PeerManager peerManager, Whiteboard selectedBoard) throws InterruptedException, UnknownHostException {
+		ClientManager clientManager = peerManager.connect(this.whiteboardServerPort, this.host);
+		clientManager.on(PeerManager.peerStarted, args -> {
+			Endpoint endpoint = (Endpoint) args[0];
+			setShare(true);
+			endpoint.emit(WhiteboardServer.shareBoard, selectedBoard.getName());
+			endpoint.on(WhiteboardServer.error, args1 -> {
+				System.out.println("Sharing board error: " + args1[0]);                    //没share成功
+				clientManager.shutdown();
+			}).on(WhiteboardServer.sharingBoard, args1 -> {
+				if (args1[0].equals(selectedBoard.getName())) {
+					ownSharingWhiteboards.add(selectedBoard.getName());
+					System.out.println("Sharing board successfully");                    //查询是否成功share了自己的whiteboard
+				} else {
+					sharedWhiteboards.add((String) args1[0]);
+				}
+			}).on(WhiteboardServer.unsharingBoard, args1 -> {
+				if (args1[0].equals(selectedBoard.getName())) {
+					ownSharingWhiteboards.remove(selectedBoard.getName());
+					System.out.println("Unsharing board successfully");                    //查询是否成功unshare了自己的whiteboard
+					clientManager.shutdown();
+				} else {
+					sharedWhiteboards.remove((String) args1[0]);
+				}
+			});
+		}).on(PeerManager.peerError, (args) -> {
+			Endpoint endpoint = (Endpoint) args[0];
+			log.info("Peer ended in error: " + endpoint.getOtherEndpointId());
+		}).on(PeerManager.peerStopped, (args) -> {
+			Endpoint endpoint = (Endpoint) args[0];
+			log.info("Peer ended: " + endpoint.getOtherEndpointId());
+		});
+		clientManager.start();
+	}
+
+	public void unshareBoard(PeerManager peerManager, Whiteboard selectedBoard) throws InterruptedException, UnknownHostException {
+		ClientManager clientManager = peerManager.connect(this.whiteboardServerPort, this.host);
+		clientManager.on(PeerManager.peerStarted, args -> {
+			Endpoint endpoint = (Endpoint) args[0];
+			setShare(false);
+			endpoint.emit(WhiteboardServer.unshareBoard, selectedBoard.getName());
+			endpoint.on(WhiteboardServer.error, args1 -> {
+				System.out.println("Unsharing board error: " + args1[0]);                    //没unshare成功
+				clientManager.shutdown();
+			}).on(WhiteboardServer.unsharingBoard, args1 -> {
+				if (args1[0].equals(selectedBoard.getName())) {
+					ownSharingWhiteboards.remove(selectedBoard.getName());
+					clientManager.shutdown();
+					System.out.println("Sharing board successfully");                    //查询是否成功unshare了自己的whiteboard
+				} else {
+					sharedWhiteboards.remove((String) args1[0]);
+				}
+			});
+		}).on(PeerManager.peerError, (args) -> {
+			Endpoint endpoint = (Endpoint) args[0];
+			log.info("Peer ended in error: " + endpoint.getOtherEndpointId());
+		}).on(PeerManager.peerStopped, (args) -> {
+			Endpoint endpoint = (Endpoint) args[0];
+			log.info("Peer ended: " + endpoint.getOtherEndpointId());
+		});
+		clientManager.start();
+	}
+
+
 	// From whiteboard peer
 	//TODO
-	
-	
+
+
 	/******
-	 * 
+	 *
 	 * Methods to manipulate data locally. Distributed systems related code has been
 	 * cut from these methods.
 	 * 

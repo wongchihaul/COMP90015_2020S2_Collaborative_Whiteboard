@@ -1,17 +1,11 @@
 package pb;
 
 
-import java.util.logging.Logger;
-
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
-
+import org.apache.commons.cli.*;
 import pb.app.WhiteboardApp;
 import pb.utils.Utils;
+
+import java.util.logging.Logger;
 
 /**
  * Just a bootstrap class for the actual whiteboard app.
@@ -75,23 +69,24 @@ public class WhiteboardPeer {
 						cmd.getOptionValue("port"));
 				help(options);
 			}
-        }
-        
-        if(cmd.hasOption("whiteboardServerPort")) {
-        	try{
-        		whiteboardServerPort = Integer.parseInt(cmd.getOptionValue("whiteboardServerPort"));
-			} catch (NumberFormatException e){
-				System.out.println("-whiteboardServerPort requires a port number, parsed: "+
+		}
+
+		if (cmd.hasOption("whiteboardServerPort")) {
+			try {
+				whiteboardServerPort = Integer.parseInt(cmd.getOptionValue("whiteboardServerPort"));
+			} catch (NumberFormatException e) {
+				System.out.println("-whiteboardServerPort requires a port number, parsed: " +
 						cmd.getOptionValue("whiteboardServerPort"));
 				help(options);
 			}
-        }
-        
-        if(cmd.hasOption("host")) {
-        	host = cmd.getOptionValue("host");
-        }
-        
-		WhiteboardApp whiteboard = new WhiteboardApp(peerPort,host,whiteboardServerPort);
+		}
+
+		if (cmd.hasOption("host")) {
+			host = cmd.getOptionValue("host");
+		}
+
+		WhiteboardApp whiteboard = new WhiteboardApp(peerPort, host, whiteboardServerPort);
+		whiteboard.startAsClient();
 		whiteboard.waitToFinish();
 		Utils.getInstance().cleanUp();
 	}

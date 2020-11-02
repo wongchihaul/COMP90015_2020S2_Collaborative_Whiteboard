@@ -1,6 +1,7 @@
 package pb;
 
 import org.apache.commons.cli.*;
+import pb.app.WhiteboardApp;
 import pb.managers.IOThread;
 import pb.managers.ServerManager;
 import pb.managers.endpoint.Endpoint;
@@ -134,7 +135,9 @@ public class WhiteboardServer {
 				System.out.println("Found someone sharing: " + eventArgs1[0]);
 				endpoint.emit(sharingBoard, eventArgs1[0]);
 			}).on(unshareBoard, eventArgs1 ->
-					endpoint.emit(unsharingBoard, eventArgs1[0]));
+					endpoint.emit(unsharingBoard, eventArgs1[0])
+			).on(WhiteboardApp.checkStatus, args1 ->
+					endpoint.emit(WhiteboardApp.checkStatusAccept, args1[0]));
 		}).on(ServerManager.sessionStopped, (eventArgs) -> {
 			Endpoint endpoint = (Endpoint) eventArgs[0];
 			log.info("Client session ended: " + endpoint.getOtherEndpointId());

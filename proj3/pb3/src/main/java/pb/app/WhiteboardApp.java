@@ -4,6 +4,7 @@ import pb.WhiteboardServer;
 import pb.managers.ClientManager;
 import pb.managers.PeerManager;
 import pb.managers.endpoint.Endpoint;
+import pb.utils.Eventable;
 
 import javax.swing.*;
 import java.awt.*;
@@ -139,11 +140,29 @@ public class WhiteboardApp {
 	 * </ul>
 	 */
 	public static final String boardError = "BOARD_ERROR";
-	
+
 	/**
-	 * White board map from board name to board object 
+	 * Emitted to Server to say check currenct status of whiteboard.
+	 * Argument is action.
+	 * <ul>
+	 * <li>{@code args[0] instanceof String}</li>
+	 * </ul>
 	 */
-	Map<String,Whiteboard> whiteboards;
+	public static final String checkStatus = "CHECK_STATUS";
+
+	/**
+	 * Emitted to Peer to accept the check.
+	 * Argument is action.
+	 * <ul>
+	 * <li>{@code args[0] instanceof String}</li>
+	 * </ul>
+	 */
+	public static final String checkStatusAccept = "CHECK_STATUS_ACCEPT";
+
+	/**
+	 * White board map from board name to board object
+	 */
+	Map<String, Whiteboard> whiteboards;
 
 	/**
 	 * The currently selected white board
@@ -161,6 +180,7 @@ public class WhiteboardApp {
 	boolean sharing = false;
 	Set<String> subscribers;
 	String action;            //Options: addPath, clear, undo, delete
+	Endpoint endpoint;
 	/*
 	 * GUI objects, you probably don't need to modify these things... you don't
 	 * need to modify these things... don't modify these things [LOTR reference?].
@@ -294,32 +314,46 @@ public class WhiteboardApp {
 		try {
 			ClientManager clientManager = peerManager.connect(whiteboardServerPort, whiteboardServerHost);
 			clientManager.on(PeerManager.peerStarted, args -> {
-				Endpoint endpoint = (Endpoint) args[0];
-				System.out.println("Board now is: " + selectedBoard.toString());
-				System.out.println("Sharing? " + selectedBoard.isShared());
-				System.out.println("Remote? " + selectedBoard.isRemote());
+				Endpoint endpoint1 = (Endpoint) args[0];
+				this.endpoint = endpoint1;
+//				System.out.println("Board now is: " + selectedBoard.toString());
+//				System.out.println("Sharing? " + selectedBoard.isShared());
+//				System.out.println("Remote? " + selectedBoard.isRemote());
 				// TODO: 现在没有办法监听local action，比如没有办法在selectBoard选择share之后监听isShared（）
-				if (selectedBoard.isShared()) {
-					endpoint.emit(WhiteboardServer.shareBoard, selectedBoard.getName());
-					sharing = true;
-				} else {
-					if (sharing) {
-						endpoint.emit(WhiteboardServer.unshareBoard, selectedBoard.getName());
-						sharing = false;
-					}
-				}
-				endpoint.on(WhiteboardServer.sharingBoard, args1 -> {
-					if (!getPeerPort((String) args1[0]).equals(peerport)) {
+//				if (selectedBoard.isShared()) {
+//					endpoint.emit(WhiteboardServer.shareBoard, selectedBoard.getName());
+//					sharing = true;
+//				} else {
+//					if (sharing) {
+//						endpoint.emit(WhiteboardServer.unshareBoard, selectedBoard.getName());
+//						sharing = false;
+//					}
+//				}
+//				endpoint.on(WhiteboardServer.shareBoard, args1 -> {
+//					System.out.println("HELLO WORLD");
+//							endpoint.emit(WhiteboardServer.shareBoard, selectedBoard.getName());
+//						}
+//				).on(WhiteboardServer.unshareBoard, args1 ->
+//					endpoint.emit(WhiteboardServer.unshareBoard,selectedBoard.getName()));
+
+
+				endpoint.on(WhiteboardServer.sharingBoard, args2 -> {
+					if (!getPeerPort((String) args2[0]).equals(peerport)) {
 						System.out.println("Adding others' board now");
 						//每当有新whiteboard分享的时候，其余peer都会被动在list中加上这个whiteboard
-						addBoard(new Whiteboard((String) args1[0], true), false);
+						addBoard(new Whiteboard((String) args2[0], true), false);
 					}
-				}).on(WhiteboardServer.unsharingBoard, args1 -> {
-					if (!getPeerPort((String) args1[0]).equals(peerport)) {
-						deleteBoard((String) args[0]);
+				}).on(WhiteboardServer.unsharingBoard, args2 -> {
+					if (!getPeerPort((String) args2[0]).equals(peerport)) {
+						deleteBoard((String) args2[0]);
 					}
 				});
-				endpoint.emit(WhiteboardServer.shareBoard, selectedBoard.getName());
+//
+				try {
+					collaborate(peerManager);                            // Not sure
+				} catch (UnknownHostException | InterruptedException e) {
+					e.printStackTrace();
+				}
 			}).on(PeerManager.peerStopped, args -> {
 				Endpoint endpoint = (Endpoint) args[0];
 				System.out.println("Disconnected from the index server: " + endpoint.getOtherEndpointId());
@@ -328,12 +362,11 @@ public class WhiteboardApp {
 				System.out.println("There was an error communicating with the index server: "
 						+ endpoint.getOtherEndpointId());
 			}).on(PeerManager.peerServerManager, args -> {
-				try {
-					ClientManager clientManager1 = peerManager.connect(whiteboardServerPort, whiteboardServerHost);
-					collaborate(clientManager1);                            // Not sure
-				} catch (UnknownHostException | InterruptedException e) {
-					e.printStackTrace();
-				}
+//				try {
+//					collaborate(peerManager);                            // Not sure
+//				} catch (UnknownHostException | InterruptedException e) {
+//					e.printStackTrace();
+//				}
 			});
 			peerManager.start();
 			clientManager.start();
@@ -346,7 +379,8 @@ public class WhiteboardApp {
 
 	// From whiteboard peer
 	//TODO
-	public void collaborate(ClientManager clientManager) {    //都是由peermanager管理的
+	public void collaborate(PeerManager peerManager) throws InterruptedException, UnknownHostException {    //都是由peermanager管理的
+		ClientManager clientManager = peerManager.connect(whiteboardServerPort, whiteboardServerHost);
 		clientManager.on(PeerManager.peerStarted, args -> {
 			Endpoint endpoint = (Endpoint) args[0];
 			System.out.println("Connection from peer: " + endpoint.getOtherEndpointId());
@@ -360,7 +394,7 @@ public class WhiteboardApp {
 				//遍历whiteboards，找到全部非selected的whiteboard，发送unlisten给那些whiteboard的owner
 				//unlisten之后不需要clear，放在后台就可以，之后如果再次选定，再次获取整个board data
 				whiteboards.forEach((name, board) -> {
-					if (!name.equals(selectedBoard.toString()) && board.isRemote()) {
+					if ((!name.equals(selectedBoard.toString())) && board.isRemote()) {
 						endpoint.emit(unlistenBoard, name);
 					}
 				});
@@ -478,7 +512,6 @@ public class WhiteboardApp {
 		}
 		action = "delete";
 		updateComboBox(null);
-//		System.out.printf("DEEEEEEELLLL BOARD");
 	}
 	
 	/**
@@ -505,10 +538,9 @@ public class WhiteboardApp {
 			} else {
 				// was accepted locally, so do remote stuff if needed
 				//TODO
-//				System.out.println("DRAWWWING");
 				action = "addPath";
-
-			}
+				new Eventable().emit(boardPathUpdate, selectedBoard.getName());
+				}
 		} else {
 			log.severe("path created without a selected board: "+currentPath);
 		}
@@ -525,7 +557,6 @@ public class WhiteboardApp {
 			} else {
 				// was accepted locally, so do remote stuff if needed
 				//TODO
-//				System.out.println("CLLLLEEEARR");
 				action = "clear";
 				drawSelectedWhiteboard();
 			}
@@ -545,7 +576,6 @@ public class WhiteboardApp {
 			} else {
 				//TODO
 				action = "undo";
-//				System.out.println("UUUUUNNNNDO");
 				drawSelectedWhiteboard();
 			}
 		} else {
@@ -567,7 +597,13 @@ public class WhiteboardApp {
 	public void setShare(boolean share) {
 		if (selectedBoard != null) {
 			selectedBoard.setShared(share);
-			System.out.println("SSSSEEEETTT SSSHARE");
+			if (share) {
+				System.out.println("JOEY SHARES FOOD");
+				endpoint.emit(WhiteboardServer.shareBoard, selectedBoard.getName());
+			} else {
+				System.out.println("JOEY DOESN'T SHARE FOOD");
+				endpoint.emit(WhiteboardServer.unshareBoard, selectedBoard.getName());
+			}
 		} else {
 			log.severe("there is no selected board");
         }

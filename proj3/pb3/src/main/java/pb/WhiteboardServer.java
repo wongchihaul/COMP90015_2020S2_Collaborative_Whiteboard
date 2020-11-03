@@ -1,13 +1,14 @@
 package pb;
 
 import org.apache.commons.cli.*;
-import pb.app.WhiteboardApp;
 import pb.managers.IOThread;
 import pb.managers.ServerManager;
 import pb.managers.endpoint.Endpoint;
 import pb.utils.Utils;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -71,15 +72,16 @@ public class WhiteboardServer {
 	 * </ul>
 	 */
 	public static final String error = "ERROR";
-	
+
 	/**
 	 * Default port number.
 	 */
 	private static int port = Utils.indexServerPort;
-	
-	
-	
-	private static void help(Options options){
+
+	private static final Set<Endpoint> liveEndpoints = new HashSet<>();
+
+
+	private static void help(Options options) {
 		String header = "PB Whiteboard Server for Unimelb COMP90015\n\n";
 		String footer = "\ncontact aharwood@unimelb.edu.au for issues.";
 		HelpFormatter formatter = new HelpFormatter();
@@ -130,14 +132,16 @@ public class WhiteboardServer {
 		 */
 		serverManager.on(ServerManager.sessionStarted, eventArgs -> {
 			Endpoint endpoint = (Endpoint) eventArgs[0];
+			synchronized (liveEndpoints) {
+				liveEndpoints.add(endpoint);
+			}
 			log.info("Client session started: " + endpoint.getOtherEndpointId());
 			endpoint.on(shareBoard, eventArgs1 -> {
 				System.out.println("Found someone sharing: " + eventArgs1[0]);
-				endpoint.emit(sharingBoard, eventArgs1[0]);
+				liveEndpoints.forEach(e -> e.emit(sharingBoard, eventArgs1[0]));
 			}).on(unshareBoard, eventArgs1 ->
-					endpoint.emit(unsharingBoard, eventArgs1[0])
-			).on(WhiteboardApp.checkStatus, args1 ->
-					endpoint.emit(WhiteboardApp.checkStatusAccept, args1[0]));
+					liveEndpoints.forEach(e -> e.emit(unsharingBoard, eventArgs1[0]))
+			);
 		}).on(ServerManager.sessionStopped, (eventArgs) -> {
 			Endpoint endpoint = (Endpoint) eventArgs[0];
 			log.info("Client session ended: " + endpoint.getOtherEndpointId());

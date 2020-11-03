@@ -2,9 +2,7 @@ package pb.app;
 
 import pb.WhiteboardServer;
 import pb.managers.ClientManager;
-import pb.managers.IOThread;
 import pb.managers.PeerManager;
-import pb.managers.ServerManager;
 import pb.managers.endpoint.Endpoint;
 
 import javax.swing.*;
@@ -164,6 +162,8 @@ public class WhiteboardApp {
     Endpoint indexClientEndpoint;
     final Map<String, Endpoint> peerClientEndpoints;                // boardname <-> endpoint
     final Map<String, Set<Endpoint>> peerServerEndpoints;
+    PeerManager peerManager;
+    private volatile boolean secondSennd = false;
     /*
      * GUI objects, you probably don't need to modify these things... you don't
      * need to modify these things... don't modify these things [LOTR reference?].
@@ -265,8 +265,20 @@ public class WhiteboardApp {
      */
     public static String getLatestPath(String data) {
         String[] paths = getBoardPaths(data).split("%");
-        String boardIDAndVersion = getBoardName(data) + "%" + getBoardVersion(data) + "%";
-        return paths.length > 1 ? boardIDAndVersion + paths[paths.length - 1] : boardIDAndVersion;
+        long version = getBoardVersion(data);
+        String boardIDAndVersion = getBoardName(data) + "%" + version + "%";
+        return paths.length >= 1 ? boardIDAndVersion + paths[paths.length - 1] : boardIDAndVersion;
+    }
+
+    /**
+     * @param data = peer:port:boardid%version%PATHS
+     * @return peer:port:boardid%version-1%latestPATH
+     */
+    public static String getLatestPathAndOlderVersion(String data) {
+        String[] paths = getBoardPaths(data).split("%");
+        long version = getBoardVersion(data) - 1;
+        String boardIDAndVersion = getBoardName(data) + "%" + version + "%";
+        return paths.length >= 1 ? boardIDAndVersion + paths[paths.length - 1] : boardIDAndVersion;
     }
 
     /**
@@ -288,7 +300,7 @@ public class WhiteboardApp {
     // From whiteboard server
     // TODO
     public void startAsClient() {
-        PeerManager peerManager = new PeerManager(getPort(peerport));
+        this.peerManager = new PeerManager(getPort(peerport));
         try {
             ClientManager clientManager = peerManager.connect(whiteboardServerPort, whiteboardServerHost);
             clientManager.on(PeerManager.peerStarted, args -> {
@@ -303,6 +315,18 @@ public class WhiteboardApp {
                     if (!getPeerPort((String) args2[0]).equals(peerport)) {
                         deleteBoard((String) args2[0]);
                     }
+                }).on(listenBoard, args2 -> {
+//                    System.out.println("Other Peer is: " +getPeerPort((String) args2[0]));
+//                    System.out.println("My own is: " + peerport);
+                    System.out.println("hello world");
+                    try {
+                        collaborate();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    } catch (UnknownHostException e) {
+                        e.printStackTrace();
+                    }
+
                 });
 
             }).on(PeerManager.peerStopped, args -> {
@@ -312,19 +336,23 @@ public class WhiteboardApp {
                 Endpoint endpoint = (Endpoint) args[0];
                 System.out.println("There was an error communicating with the index server: "
                         + endpoint.getOtherEndpointId());
-            }).on(PeerManager.peerServerManager, args -> {
-                ServerManager serverManager = (ServerManager) args[0];
-                serverManager.on(IOThread.ioThread, args1 -> {
-                    String port = (String) args1[0];
-                    // we don't need this info, but let's log it
-                    log.info("using Internet address: " + port);
-                });
-                try {
-                    collaborate(peerManager);                            // Not sure
-                } catch (UnknownHostException | InterruptedException e) {
-                    e.printStackTrace();
-                }
-            });
+            })
+//                    .on(PeerManager.peerServerManager, args -> {
+//                ServerManager serverManager = (ServerManager) args[0];
+//                serverManager.on(IOThread.ioThread, args1 -> {
+//                    String port = (String) args1[0];
+//                    // we don't need this info, but let's log it
+//                    log.info("using Internet address: " + port);
+//                    try {
+//                        collaborate();                            // Not sure
+//                    } catch (UnknownHostException | InterruptedException e) {
+//                        e.printStackTrace();
+//                    }
+//                })
+            ;
+//            ).on(listenBoard, args -> {
+//                System.out.println(args[0]);
+//            });
             peerManager.start();
             clientManager.start();
             clientManager.join();                        //Not sure
@@ -336,15 +364,15 @@ public class WhiteboardApp {
 
     // From whiteboard peer
     //TODO
-    public void collaborate(PeerManager peerManager) throws InterruptedException, UnknownHostException {    //都是由peermanager管理的
+    public void collaborate() throws InterruptedException, UnknownHostException {    //都是由peermanager管理的
         if (selectedBoard != null) {
             if (selectedBoard.isRemote()) {
                 // Editor Mode.
                 // Need to connect to the owner peer of the selected whiteboard
-                editorMode(peerManager, selectedBoard);
+                editorMode();
             } else {
                 // You're the owner of selected board
-                ownerMode(peerManager);
+                ownerMode();
             }
         } else {
             log.severe("collaborating without a selected board: " + peerManager);
@@ -352,9 +380,12 @@ public class WhiteboardApp {
     }
 
 
-    public void editorMode(PeerManager peerManager, Whiteboard selectedBoard) throws InterruptedException, UnknownHostException {
+    public void editorMode() throws InterruptedException, UnknownHostException {
         String peerHost = getIP(selectedBoard.toString());
         int peerServerPort = getPort(selectedBoard.toString());
+
+        System.out.println(peerHost + ":" + peerServerPort);
+
         ClientManager clientManager = peerManager.connect(peerServerPort, peerHost);
         clientManager.on(PeerManager.peerStarted, args -> {
             Endpoint endpoint = (Endpoint) args[0];
@@ -363,23 +394,10 @@ public class WhiteboardApp {
             synchronized (peerClientEndpoints) {
                 peerClientEndpoints.put(selectedBoard.getName(), endpoint);
             }
+//            peerClientEndpoints.forEach((k,v) -> System.out.println(k + " " + v));
 
-            //send listen and getData request to the owner of selected whiteboard.
-            endpoint.emit(listenBoard, selectedBoard.getName());
-            endpoint.emit(getBoardData, selectedBoard.getName());
-            //遍历whiteboards，找到全部非selected的whiteboard，发送unlisten给那些whiteboard的owner
-            //并且关闭对应endpoint，等到下次重新连接时再创建endpoint
-            whiteboards.forEach((name, board) -> {
-                if ((!name.equals(selectedBoard.getName())) && board.isRemote()) {
-                    Endpoint backgroundWhiteboard = peerClientEndpoints.get(selectedBoard.getName());
-                    backgroundWhiteboard.emit(unlistenBoard, name);
-                    backgroundWhiteboard.close();
-                    synchronized (peerClientEndpoints) {
-                        peerClientEndpoints.remove(selectedBoard.getName());
-                    }
-                }
-            });
 
+//            stopBackgroundActivity();
 
             endpoint.on(boardData, args1 -> {
                 if (getBoardName((String) args1[0]).equals(selectedBoard.getName())) {
@@ -388,33 +406,54 @@ public class WhiteboardApp {
                 }
             }).on(boardPathUpdate, args1 -> {
                 if (getBoardName((String) args1[0]).equals(selectedBoard.getName())) {
-                    if (getBoardVersion((String) args1[0]) == getBoardVersion(selectedBoard.toString())) {
-                        pathCreatedLocally(new WhiteboardPath(getBoardPaths((String) args1[0])));
+                    System.out.println("===Editor===");
+                    System.out.println("update event version: " + getBoardVersion((String) args1[0]));
+                    System.out.println("selected Board local version: " + getBoardVersion(selectedBoard.toString()));
+
+                    if (getBoardVersion((String) args1[0]) - 1 == getBoardVersion(selectedBoard.toString())) {
+                        System.out.println("Great drawing!!");
+                        selectedBoard.addPath(new WhiteboardPath(getBoardPaths((String) args1[0])),
+                                getBoardVersion(selectedBoard.toString()));
+                        selectedBoard.draw(drawArea);
+//                        pathCreatedLocally(new WhiteboardPath(getBoardPaths((String) args1[0])));
                         endpoint.emit(boardPathAccepted, args1[0]);
                     } else {
-                        endpoint.emit(boardError, " Version mismatched. Requesting for " +
+//                        endpoint.emit(boardError, " Version mismatched. Requesting for " +
+//                                "the owner's current version of the whiteboard");
+                        System.out.println(" Version mismatched. Requesting for " +
                                 "the owner's current version of the whiteboard");
                         endpoint.emit(getBoardData, selectedBoard.getName());
                     }
                 }
             }).on(boardUndoUpdate, args1 -> {
                 if (getBoardName((String) args1[0]).equals(selectedBoard.getName())) {
-                    if (getBoardVersion((String) args1[0]) == getBoardVersion(selectedBoard.toString())) {
-                        undoLocally();
+
+                    if (getBoardVersion((String) args1[0]) - 1 == selectedBoard.getVersion()) {
+                        System.out.println("Great undo!!");
+                        selectedBoard.undo(selectedBoard.getVersion());
+                        selectedBoard.draw(drawArea);
+//                        undoLocally();
                         endpoint.emit(boardUndoAccepted, args1[0]);
                     } else {
-                        endpoint.emit(boardError, " Version mismatched. Requesting for " +
+//                        endpoint.emit(boardError, " Version mismatched. Requesting for " +
+//                                "the owner's current version of the whiteboard");
+                        System.out.println(" Version mismatched. Requesting for " +
                                 "the owner's current version of the whiteboard");
                         endpoint.emit(getBoardData, selectedBoard.getName());
                     }
                 }
             }).on(boardClearUpdate, args1 -> {
                 if (getBoardName((String) args1[0]).equals(selectedBoard.getName())) {
-                    if (getBoardVersion((String) args1[0]) == getBoardVersion(selectedBoard.toString())) {
-                        clearedLocally();
+                    if (getBoardVersion((String) args1[0]) - 1 == selectedBoard.getVersion()) {
+                        System.out.println("Great clear!!");
+                        selectedBoard.clear(selectedBoard.getVersion());
+                        selectedBoard.draw(drawArea);
+//                        clearedLocally();
                         endpoint.emit(boardClearAccepted, args1[0]);
                     } else {
-                        endpoint.emit(boardError, " Version mismatched. Requesting for " +
+//                        endpoint.emit(boardError, " Version mismatched. Requesting for " +
+//                                "the owner's current version of the whiteboard");
+                        System.out.println(" Version mismatched. Requesting for " +
                                 "the owner's current version of the whiteboard");
                         endpoint.emit(getBoardData, selectedBoard.getName());
                     }
@@ -422,6 +461,11 @@ public class WhiteboardApp {
             }).on(boardDeleted, args1 ->
                     deleteBoard((String) args1[0])
             ).on(boardError, args1 -> System.out.println(args1[0]));
+
+            //send listen and getData request to the owner of selected whiteboard.
+            endpoint.emit(listenBoard, selectedBoard.getName());
+            endpoint.emit(getBoardData, selectedBoard.getName());
+
         }).on(PeerManager.peerStopped, args -> {
             Endpoint endpoint = (Endpoint) args[0];
             System.out.println("Disconnected from the index server: " + endpoint.getOtherEndpointId());
@@ -432,58 +476,173 @@ public class WhiteboardApp {
         });
 
         clientManager.start();
+//        clientManager.join();
     }
 
-    public void ownerMode(PeerManager peerManager) {
-        peerManager.on(PeerManager.peerServerManager, args -> {
-            ServerManager serverManager = (ServerManager) args[0];
-            serverManager.on(ServerManager.sessionStarted, args1 -> {
-                Endpoint endpoint = (Endpoint) args1[0];
-                //==================
-                System.out.println("Client session started: " + endpoint.getOtherEndpointId());
-                //==================
+//    public void ownerMode() {
+//        peerManager.on(PeerManager.peerServerManager, args -> {
+//            ServerManager serverManager = (ServerManager) args[0];
+//            serverManager.on(ServerManager.sessionStarted, args1 -> {
+//                Endpoint endpoint = (Endpoint) args1[0];
+//                //==================
+//                System.out.println("Client session started: " + endpoint.getOtherEndpointId());
+//                //==================
+//
+////                stopBackgroundActivity();
+//
+//                endpoint.on(listenBoard, args2 -> {
+//                    String boardRequested = (String) args2[0];
+//                    if (whiteboards.containsKey(boardRequested)) {
+//                        synchronized (peerServerEndpoints) {
+//                            if (!peerServerEndpoints.containsKey(selectedBoard.getName())) {
+//                                peerServerEndpoints.put(selectedBoard.getName(), new HashSet<>());
+//                            }
+//                            peerServerEndpoints.get(selectedBoard.getName()).add(endpoint);
+//                            System.out.println("Peer:" +endpoint.getOtherEndpointId()+" is listening now.");
+//                        }
+//                    } else {
+//                        endpoint.emit(boardError, "Whiteboard listened does not exist");
+//                    }
+//                }).on(unlistenBoard, args2 -> {
+//                    String boardRequested = (String) args2[0];
+//                    if (whiteboards.containsKey(boardRequested)) {
+//                        synchronized (peerServerEndpoints) {
+//                            peerServerEndpoints.get(selectedBoard.getName()).remove(endpoint);
+//                        }
+//                        System.out.println("Peer:" +endpoint.getOtherEndpointId()+" is unlistening now.");
+//                        endpoint.close();
+//                    } else {
+//                        endpoint.emit(boardError, "Whiteboard unlistened does not exist");
+//                    }
+//                }).on(getBoardData, args2 -> {
+//                    String boardRequested = (String) args2[0];
+//                    if (whiteboards.containsKey(boardRequested)) {
+//                        endpoint.emit(boardData, whiteboards.get(boardRequested).toString());
+//                    } else {
+//                        endpoint.emit(boardError, "whiteboard requested does not exist");
+//                    }
+//                });
+//            }).on(ServerManager.sessionStopped, (args1) -> {
+//                Endpoint endpoint = (Endpoint) args1[0];
+//                log.info("Client session ended: " + endpoint.getOtherEndpointId());
+//            }).on(ServerManager.sessionError, (args1) -> {
+//                Endpoint endpoint = (Endpoint) args1[0];
+//                log.warning("Client session ended in error: " + endpoint.getOtherEndpointId());
+//            }).on(IOThread.ioThread, (args1) -> {
+//                String peerport = (String) args1[0];
+//                // we don't need this info, but let's log it
+//                log.info("using Internet address: " + peerport);
+//            });
+//        });
+//
+//    }
 
-                endpoint.on(listenBoard, args2 -> {
-                    String boardRequested = (String) args2[0];
-                    if (whiteboards.containsKey(boardRequested)) {
-                        synchronized (peerServerEndpoints) {
-                            if (!peerServerEndpoints.containsKey(selectedBoard.getName())) {
-                                peerServerEndpoints.put(selectedBoard.getName(), new HashSet<>());
-                            }
-                            peerServerEndpoints.get(selectedBoard.getName()).add(endpoint);
+    public void ownerMode() {
+        peerManager.on(PeerManager.peerStarted, args1 -> {
+
+            Endpoint endpoint = (Endpoint) args1[0];
+            //==================
+            System.out.println("Client session started: " + endpoint.getOtherEndpointId());
+            //==================
+
+//                stopBackgroundActivity();
+
+            endpoint.on(listenBoard, args2 -> {
+                String boardRequested = (String) args2[0];
+                if (whiteboards.containsKey(boardRequested)) {
+                    synchronized (peerServerEndpoints) {
+                        if (!peerServerEndpoints.containsKey(selectedBoard.getName())) {
+                            peerServerEndpoints.put(selectedBoard.getName(), new HashSet<>());
                         }
-                    } else {
-                        endpoint.emit(boardError, "Whiteboard listened does not exist");
+                        peerServerEndpoints.get(selectedBoard.getName()).add(endpoint);
+                        System.out.println("Peer:" + endpoint.getOtherEndpointId() + " is listening now.");
                     }
-                }).on(unlistenBoard, args2 -> {
-                    String boardRequested = (String) args2[0];
-                    if (whiteboards.containsKey(boardRequested)) {
-                        synchronized (peerServerEndpoints) {
-                            peerServerEndpoints.get(selectedBoard.getName()).remove(endpoint);
-                        }
-                        endpoint.close();
-                    } else {
-                        endpoint.emit(boardError, "Whiteboard unlistened does not exist");
+                } else {
+                    endpoint.emit(boardError, "Whiteboard listened does not exist");
+                }
+            }).on(unlistenBoard, args2 -> {
+                String boardRequested = (String) args2[0];
+                if (whiteboards.containsKey(boardRequested)) {
+                    synchronized (peerServerEndpoints) {
+                        peerServerEndpoints.get(selectedBoard.getName()).remove(endpoint);
                     }
-                }).on(getBoardData, args2 -> {
-                    String boardRequested = (String) args2[0];
-                    if (whiteboards.containsKey(boardRequested)) {
-                        endpoint.emit(boardData, whiteboards.get(boardRequested).toString());
-                    } else {
-                        endpoint.emit(boardError, "whiteboard requested does not exist");
+                    System.out.println("Peer:" + endpoint.getOtherEndpointId() + " is unlistening now.");
+                    endpoint.close();
+                } else {
+                    endpoint.emit(boardError, "Whiteboard unlistened does not exist");
+                }
+            }).on(getBoardData, args2 -> {
+                String boardRequested = (String) args2[0];
+                if (whiteboards.containsKey(boardRequested)) {
+                    endpoint.emit(boardData, whiteboards.get(boardRequested).toString());
+                } else {
+                    endpoint.emit(boardError, "whiteboard requested does not exist");
+                }
+            }).on(boardPathUpdate, args2 -> {
+                if (getBoardName((String) args2[0]).equals(selectedBoard.getName())) {
+                    System.out.println("===Owner===");
+                    System.out.println("update event version: " + getBoardVersion((String) args2[0]));
+                    System.out.println("selected Board local version: " + getBoardVersion(selectedBoard.toString()));
+                    if (getBoardVersion((String) args2[0]) - 1 == getBoardVersion(selectedBoard.toString())) {
+                        System.out.println("Great drawing!!");
+                        pathCreatedLocally(new WhiteboardPath(getBoardPaths((String) args2[0])));
+                        secondSennd = true;
+                        selectedBoard.addPath(new WhiteboardPath(getBoardPaths((String) args2[0])),
+                                getBoardVersion(selectedBoard.toString()));
+                        selectedBoard.draw(drawArea);
+//                        endpoint.emit(boardPathAccepted, args2[0]);
                     }
-                });
-            }).on(ServerManager.sessionStopped, (args1) -> {
-                Endpoint endpoint = (Endpoint) args1[0];
-                log.info("Client session ended: " + endpoint.getOtherEndpointId());
-            }).on(ServerManager.sessionError, (args1) -> {
-                Endpoint endpoint = (Endpoint) args1[0];
-                log.warning("Client session ended in error: " + endpoint.getOtherEndpointId());
-            }).on(IOThread.ioThread, (args1) -> {
-                String peerport = (String) args1[0];
-                // we don't need this info, but let's log it
-                log.info("using Internet address: " + peerport);
-            });
+//                    else {
+//                        endpoint.emit(boardError, " Version mismatched. Requesting for " +
+//                                "the owner's current version of the whiteboard");
+//                        endpoint.emit(getBoardData, selectedBoard.getName());
+//                    }
+                }
+            }).on(boardUndoUpdate, args2 -> {
+                if (getBoardName((String) args2[0]).equals(selectedBoard.getName())) {
+                    if (getBoardVersion((String) args2[0]) - 1 == selectedBoard.getVersion()) {
+                        System.out.println("Great undo!!");
+                        undoLocally();
+                        endpoint.emit(boardUndoAccepted, args2[0]);
+                    }
+//                    else {
+//                        endpoint.emit(boardError, " Version mismatched. Requesting for " +
+//                                "the owner's current version of the whiteboard");
+//                        endpoint.emit(getBoardData, selectedBoard.getName());
+//                    }
+                }
+            }).on(boardClearUpdate, args2 -> {
+                if (getBoardName((String) args2[0]).equals(selectedBoard.getName())) {
+                    if (getBoardVersion((String) args2[0]) - 1 == selectedBoard.getVersion()) {
+                        System.out.println("Great clear!!");
+                        clearedLocally();
+                        endpoint.emit(boardClearAccepted, args2[0]);
+                    }
+//                    else {
+//                        endpoint.emit(boardError, " Version mismatched. Requesting for " +
+//                                "the owner's current version of the whiteboard");
+//                        endpoint.emit(getBoardData, selectedBoard.getName());
+//                    }
+                }
+            }).on(boardDeleted, args2 ->
+                    deleteBoard((String) args2[0])
+            ).on(boardError, args2 -> System.out.println(args1[0]));
+
+        });
+    }
+
+    //遍历whiteboards，找到全部非selected的whiteboard，发送unlisten给那些whiteboard的owner
+    //并且关闭对应endpoint，等到下次重新连接时再创建endpoint
+    public void stopBackgroundActivity() {
+        whiteboards.forEach((name, board) -> {
+            if ((!name.equals(selectedBoard.getName())) && board.isRemote()) {
+                Endpoint backgroundWhiteboard = peerClientEndpoints.get(selectedBoard.getName());
+                backgroundWhiteboard.emit(unlistenBoard, name);
+                backgroundWhiteboard.close();
+                synchronized (peerClientEndpoints) {
+                    peerClientEndpoints.remove(selectedBoard.getName());
+                }
+            }
         });
     }
 
@@ -569,22 +728,27 @@ public class WhiteboardApp {
                     //Emit updates to board's owner first.
                     Endpoint endpoint = peerClientEndpoints.get(selectedBoard.getName());
                     endpoint.emit(boardPathUpdate, getLatestPath(selectedBoard.toString()));
-                    endpoint.on(boardPathAccepted, args ->
-                            System.out.println(args[0])
-                    ).on(boardError, args ->
-                            System.out.println(args[0]));
+//                        endpoint.on(boardPathAccepted, args ->
+//                                System.out.println(args[0])
+//                        ).on(boardError, args ->
+//                                System.out.println(args[0]));
                 } else {
                     //Owner Mode
+
                     if (peerServerEndpoints.containsKey(selectedBoard.getName())) {
-                        Set<Endpoint> peer_server_endpoints = peerServerEndpoints.get(selectedBoard.getName());
-                        peer_server_endpoints.forEach(e -> {
+                        Set<Endpoint> peerServerEndpoint = this.peerServerEndpoints.get(selectedBoard.getName());
+                        peerServerEndpoint.forEach(e -> {
+//                                if(secondSennd)
+//                                    e.emit(boardPathUpdate, getLatestPathAndOlderVersion(selectedBoard.toString()));
+//                                else
                             e.emit(boardPathUpdate, getLatestPath(selectedBoard.toString()));
-                            e.on(boardPathAccepted, args ->
-                                    System.out.println(args[0])
-                            ).on(boardError, args ->
-                                    System.out.println(args[0]));
+//                                e.on(boardPathAccepted, args ->
+//                                        System.out.println(args[0])
+//                                ).on(boardError, args ->
+//                                        System.out.println(args[0]));
                         });
                     }
+                    secondSennd = false;
                 }
 
             }
@@ -681,10 +845,14 @@ public class WhiteboardApp {
         drawSelectedWhiteboard();
         log.info("selected board: " + selectedBoard.getName());
         //TODO: how to send event to peer itself to keep listening the selection of board.
-
         // It should only be captured by peer's own.
         // Then the event should trigger the collaboration.
-//        indexClientEndpoint.localEmit(listenBoard, selectedBoard.getName());
+//        if(indexClientEndpoint != null) {
+//            indexClientEndpoint.emit(listenBoard, selectedBoard.getName());
+//        }
+        if (indexClientEndpoint != null) {
+            indexClientEndpoint.emit(listenBoard, selectedBoard.getName());
+        }
     }
 
     /**
@@ -700,6 +868,7 @@ public class WhiteboardApp {
                 System.out.println("JOEY DOESN'T SHARE FOOD");
                 indexClientEndpoint.emit(WhiteboardServer.unshareBoard, selectedBoard.getName());
             }
+            selectedABoard();
         } else {
             log.severe("there is no selected board");
         }

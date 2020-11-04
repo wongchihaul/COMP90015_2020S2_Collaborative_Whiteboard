@@ -152,6 +152,8 @@ public class WhiteboardServer {
 			String peerport = (String) eventArgs[0];
 			// we don't need this info, but let's log it
 			log.info("using Internet address: " + peerport);
+		}).on(error, (eventArgs) -> {
+			log.severe((String) eventArgs[0]);
 		});
 
 

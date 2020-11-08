@@ -137,7 +137,6 @@ public class WhiteboardServer {
 			}
 			log.info("Client session started: " + endpoint.getOtherEndpointId());
 			endpoint.on(shareBoard, eventArgs1 -> {
-				System.out.println("Found someone sharing: " + eventArgs1[0]);
 				liveEndpoints.forEach(e -> e.emit(sharingBoard, eventArgs1[0]));
 			}).on(unshareBoard, eventArgs1 ->
 					liveEndpoints.forEach(e -> e.emit(unsharingBoard, eventArgs1[0]))

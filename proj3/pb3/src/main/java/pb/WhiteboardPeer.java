@@ -87,7 +87,8 @@ public class WhiteboardPeer {
 
 		WhiteboardApp whiteboard = new WhiteboardApp(peerPort, host, whiteboardServerPort);
 		whiteboard.start();
-		whiteboard.waitToFinish();
+		//No need to call this, since it has already been called in whiteboardApp
+//		whiteboard.waitToFinish();
 		Utils.getInstance().cleanUp();
 	}
 

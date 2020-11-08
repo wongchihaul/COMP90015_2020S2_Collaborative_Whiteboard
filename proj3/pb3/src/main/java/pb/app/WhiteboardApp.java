@@ -173,11 +173,13 @@ public class WhiteboardApp {
      * Each peer has an endpoint to connect to whiteboard server.
      */
     Endpoint indexClientEndpoint;
+    ClientManager indexClientManager;
 
     /**
-     * Mapping board name to a client endpoint connected to the peer that owns(i.e. shares) that board.
+     * Mapping board name to a client endpoint/manager connected to the peer that owns(i.e. shares) that board.
      */
     final Map<String, Endpoint> peerClientEndpoints;
+    final Map<String, ClientManager> peerClientManagers;
 
     /**
      * Mapping board name to a set of server endpoints connected to all peers that are listening to this board.
@@ -205,6 +207,7 @@ public class WhiteboardApp {
                          int whiteboardServerPort) {
         whiteboards = new HashMap<>();
         peerClientEndpoints = new HashMap<>();
+        peerClientManagers = new HashMap<>();
         peerServerEndpoints = new HashMap<>();
         this.peerport = whiteboardServerHost + ":" + peerPort;
         this.peerHost = whiteboardServerHost;
@@ -341,8 +344,8 @@ public class WhiteboardApp {
     public void start() {
         this.peerManager = new PeerManager(getPort(peerport));
         try {
-            ClientManager clientManager = peerManager.connect(whiteboardServerPort, peerHost);
-            clientManager.on(PeerManager.peerStarted, args -> {
+            indexClientManager = peerManager.connect(whiteboardServerPort, peerHost);
+            indexClientManager.on(PeerManager.peerStarted, args -> {
                 this.indexClientEndpoint = (Endpoint) args[0];
                 indexClientEndpoint.on(WhiteboardServer.sharingBoard, args2 -> {
                     if (!getPeerPort((String) args2[0]).equals(peerport)) {
@@ -354,6 +357,10 @@ public class WhiteboardApp {
                         if (peerClientEndpoints.containsKey(args2[0])) {
                             Endpoint peerClientEndpoint = peerClientEndpoints.get(args2[0]);
                             if (peerClientEndpoint != null) peerClientEndpoint.close();
+                        }
+                        if (peerClientManagers.containsKey(args2[0])) {
+                            ClientManager clientManager = peerClientManagers.get(args2[0]);
+                            if (clientManager != null) clientManager.shutdown();
                         }
                     }
                 }).on(listenBoard, args2 -> {
@@ -372,10 +379,10 @@ public class WhiteboardApp {
 
             }).on(PeerManager.peerStopped, args -> {
                 Endpoint endpoint = (Endpoint) args[0];
-                System.out.println("Disconnected from the index server: " + endpoint.getOtherEndpointId());
+                log.info("Disconnected from peer: " + endpoint.getOtherEndpointId());
             }).on(PeerManager.peerError, args -> {
                 Endpoint endpoint = (Endpoint) args[0];
-                log.severe("There was an error communicating with the index server: "
+                log.severe("There was an error communicating with the peer: "
                         + endpoint.getOtherEndpointId());
             }).on(PeerManager.peerServerManager, args -> {
                 ServerManager serverManager = (ServerManager) args[0];
@@ -387,8 +394,8 @@ public class WhiteboardApp {
             });
 
             peerManager.start();
-            clientManager.start();
-            clientManager.join();
+            indexClientManager.start();
+            indexClientManager.join();
         } catch (UnknownHostException | InterruptedException e) {
             e.printStackTrace();
         }
@@ -423,6 +430,9 @@ public class WhiteboardApp {
 
             synchronized (peerClientEndpoints) {
                 peerClientEndpoints.put(selectedBoard.getName(), endpoint);
+            }
+            synchronized (peerClientManagers) {
+                peerClientManagers.put(selectedBoard.getName(), clientManager);
             }
 
             endpoint.on(boardData, args1 -> {
@@ -467,6 +477,7 @@ public class WhiteboardApp {
                 }
             }).on(boardDeleted, args1 -> {
                 deleteBoard((String) args1[0]);
+                endpoint.close();
                 clientManager.shutdown();
             }).on(boardError, args1 -> log.severe((String) args1[0])
             ).on(IOThread.ioThread, args1 -> {
@@ -481,10 +492,10 @@ public class WhiteboardApp {
 
         }).on(PeerManager.peerStopped, args -> {
             Endpoint endpoint = (Endpoint) args[0];
-            System.out.println("Disconnected from the index server: " + endpoint.getOtherEndpointId());
+            System.out.println("Disconnected from the peer: " + endpoint.getOtherEndpointId());
         }).on(PeerManager.peerError, args -> {
             Endpoint endpoint = (Endpoint) args[0];
-            log.severe("There was an error communicating with the index server: "
+            log.severe("There was an error communicating with the peer: "
                     + endpoint.getOtherEndpointId());
         });
 
@@ -606,10 +617,10 @@ public class WhiteboardApp {
             Whiteboard whiteboard = whiteboards.get(boardname);
             if (whiteboard != null) {
                 whiteboards.remove(boardname);
-                if (!selectedBoard.isRemote()) {
+                if (!whiteboard.isRemote()) {
                     Set<Endpoint> peerServerEndpoint = peerServerEndpoints.get(boardname);
                     if (peerServerEndpoint != null) {
-                        peerServerEndpoint.forEach(e -> e.emit(boardDeleted, selectedBoard.getName()));
+                        peerServerEndpoint.forEach(e -> e.emit(boardDeleted, boardname));
                     }
                     indexClientEndpoint.emit(WhiteboardServer.unshareBoard, boardname);
                 }
@@ -800,12 +811,17 @@ public class WhiteboardApp {
                 clientEndpoint.emit(unlistenBoard, boardName);
                 clientEndpoint.close();
             }
+            ClientManager clientManager = peerClientManagers.get(boardName);
+            if (clientManager != null) {
+                clientManager.shutdown();
+            }
             Set<Endpoint> serverEndpoints = peerServerEndpoints.get(boardName);
             if (!serverEndpoints.isEmpty()) {
                 serverEndpoints.forEach(Endpoint::close);
             }
         });
         indexClientEndpoint.close();
+        indexClientManager.shutdown();
         waitToFinish();
     }
 
